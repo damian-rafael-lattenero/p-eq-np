@@ -42,6 +42,7 @@ library
     PeqNP.DensityMap
     PeqNP.Topological
     PeqNP.Combined
+    PeqNP.MITM
     PeqNP.FingerTree
     PeqNP.UnifiedExperiments
     PeqNP.BitDecompose
