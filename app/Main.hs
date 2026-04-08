@@ -19,6 +19,10 @@ import PeqNP.CategoryExperiments (showComparisonTable)
 import PeqNP.Polynomial (expand, ProductForm(..), showPoly, nonzeroTerms, hasCoeff)
 import PeqNP.PolyQuotient (buildProductMod, polyModHasCoeff, polyModCoeffAt, polyScaling, PolyScalingPoint(..))
 import PeqNP.NTT (evalProductAt, nttCoeffAt, modPow)
+import PeqNP.LLL (lllSolve, showLLLResult, density)
+import PeqNP.Topological (analyzeGaps, showGapAnalysis)
+import PeqNP.DensityMap (densitySweep, showDensitySweep)
+import PeqNP.Combined (combinedSolve, showCombinedResult)
 import PeqNP.Relaxation (solveRelaxed, showRelaxed, RelaxedSolution(..))
 import PeqNP.Rounding (probabilisticSolve, showStats)
 import PeqNP.Landscape (buildLandscape, showLandscape, showHistogram, ProbLandscape(..))
@@ -825,8 +829,44 @@ main = do
   mapM_ (szTest [3,5,7] 6) [7, 11, 13, 17, 23, 31, 97]
   putStrLn ""
 
+  -- Phase J: LLL + density + topology + combined
+  sectionHeader "42. LLL Lattice Reduction"
+  putStrLn "  LLL solves Subset Sum in POLYNOMIAL time for low density."
+  putStrLn ""
+  putStrLn "  Low density: [389, 769, 1543] target=1350:"
+  putStr $ showLLLResult (lllSolve [389, 769, 1543] 1350)
+  putStrLn ""
+  putStrLn "  Medium density: [3,5,7,9,11] target=20:"
+  putStr $ showLLLResult (lllSolve [3,5,7,9,11] 20)
+  putStrLn ""
+
+  sectionHeader "43. Gap topology (non-algebrizing approach)"
+  putStrLn "  Gaps in reachable sums have NON-ALGEBRAIC structure."
+  putStrLn ""
+  putStr $ showGapAnalysis (analyzeGaps [1,2,3,5,8,13])
+  putStrLn ""
+  putStr $ showGapAnalysis (analyzeGaps [3,5,7,9,11,13])
+  putStrLn ""
+  putStr $ showGapAnalysis (analyzeGaps [6,10,15,21,28])
+  putStrLn ""
+
+  sectionHeader "44. Density sweep: which method works where?"
+  putStr $ showDensitySweep (densitySweep 8)
+  putStrLn ""
+
+  sectionHeader "45. Combined solver: mapping the DEAD ZONE"
+  let combinedTests =
+        [ ([389, 769, 1543], 1350)           -- low density
+        , ([3,5,7,9,11,13], 25)              -- high density
+        , ([1,2,3,5,8,13,21,34], 44)         -- medium density (Fibonacci)
+        , ([100,200,400,800,1600], 1000)      -- exponential weights
+        , ([3,5,6,7,9,10,11,13,14,15], 48)   -- dense
+        ]
+  mapM_ (\(ws, t) -> putStrLn $ showCombinedResult (combinedSolve ws t)) combinedTests
+  putStrLn ""
+
   putStrLn "═══════════════════════════════════════════════════════════"
-  putStrLn " PROJECT SUMMARY (Phases A-I)"
+  putStrLn " PROJECT SUMMARY (Phases A-J)"
   putStrLn " A-C: Enriched categories, BF, DP, SAT connection"
   putStrLn " D: Monoid homomorphisms → pigeonhole barrier"
   putStrLn " F: Myhill-Nerode, reachability → same barrier"

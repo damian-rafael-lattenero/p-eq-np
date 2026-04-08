@@ -38,6 +38,10 @@ library
     PeqNP.LazyTree
     PeqNP.Streaming
     PeqNP.Diagonal
+    PeqNP.LLL
+    PeqNP.DensityMap
+    PeqNP.Topological
+    PeqNP.Combined
     PeqNP.FingerTree
     PeqNP.UnifiedExperiments
     PeqNP.BitDecompose
