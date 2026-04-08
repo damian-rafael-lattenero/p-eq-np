@@ -26,7 +26,7 @@ import PeqNP.LazyTree (searchWithStats, showPruneStats)
 import PeqNP.Streaming (streamingSolve, showStreamStats)
 import PeqNP.Diagonal (diagonalExperiment, showDiagonalResults, greedyLargest, greedySmallest, alwaysInclude, alwaysSkip, thresholdHalf, alternating)
 import PeqNP.FingerTree (fingerTreeSolve, showFTStats, measureDifficulty, showDifficultyProfile)
-import PeqNP.BitDecompose (analyzeCarry, showCarryProfile, bitLevelSolve, BitLevelStats(..), decomposeProblem, BitColumn(..), coupledBitSolve, showCoupledStats, untieRetieExperiment, showUntieRetie, interleavedSolve, showInterleavedStats, showBasisSearch, showGF2Results, solveInTransformedBasis, showGF2SolverResult, analyzeRank, showRankAnalysis, recursiveGF2Solve, showRecursiveResult)
+import PeqNP.BitDecompose (analyzeCarry, showCarryProfile, bitLevelSolve, BitLevelStats(..), decomposeProblem, BitColumn(..), coupledBitSolve, showCoupledStats, untieRetieExperiment, showUntieRetie, interleavedSolve, showInterleavedStats, showBasisSearch, showGF2Results, solveInTransformedBasis, showGF2SolverResult, analyzeRank, showRankAnalysis, recursiveGF2Solve, showRecursiveResult, RecursiveResult(..))
 import PeqNP.UnifiedExperiments (unifiedAnalysis, showUnifiedTable)
 
 main :: IO ()
@@ -640,6 +640,51 @@ main = do
 
   putStrLn "  [3,5,6,7,9,10,11] target=20 (YES):"
   putStr $ showRecursiveResult (recursiveGF2Solve [3,5,6,7,9,10,11] 20)
+  putStrLn ""
+
+  sectionHeader "37. SCALING: do corrections stay polynomial?"
+  putStrLn "  THE critical experiment. If max corrections = O(poly(n))"
+  putStrLn "  for ALL instances → P = NP. If exponential → P /= NP."
+  putStrLn ""
+  putStrLn "  n    weights             DP sums  max corr  levels  ratio"
+  putStrLn $ "  " ++ replicate 65 '-'
+
+  let scalingTests =
+        [ [1,2,3]                               -- n=3
+        , [1,2,3,5]                              -- n=4
+        , [1,2,3,5,8]                            -- n=5
+        , [1,2,3,5,8,13]                         -- n=6
+        , [1,2,3,5,8,13,21]                      -- n=7
+        , [1,2,3,5,8,13,21,34]                   -- n=8
+        , [3,5,7,9,11,13]                        -- n=6 odd
+        , [3,5,7,9,11,13,15,17]                  -- n=8 odd
+        , [3,5,6,7,9,10,11]                      -- n=7 dense
+        , [3,5,6,7,9,10,11,13,14,15]             -- n=10 dense
+        , [1,2,4,8,16,32,64]                     -- n=7 super-inc
+        , [1,2,4,8,16,32,64,128]                 -- n=8 super-inc
+        , [1,2,4,8,16,32,64,128,256]             -- n=9 super-inc
+        , [1,2,4,8,16,32,64,128,256,512]         -- n=10 super-inc
+        ]
+
+  mapM_ (\ws -> do
+    let t = sum ws `div` 2 + 1  -- target ≈ half sum + 1 (likely NO)
+        rr = recursiveGF2Solve ws t
+        dp = rrDPSize rr
+        mc = rrMaxCorrections rr
+        lv = rrLevels rr
+        ratio' = if mc > 0 then fromIntegral dp / fromIntegral mc else 0 :: Double
+    putStrLn $ "  " ++ padRight 5 (show (length ws))
+            ++ padRight 20 (show ws)
+            ++ padRight 9 (show dp)
+            ++ padRight 10 (show mc)
+            ++ padRight 8 (show lv)
+            ++ show (round ratio' :: Int) ++ "x"
+    ) scalingTests
+
+  putStrLn ""
+  putStrLn "  If ratio grows with n → corrections shrink faster than DP"
+  putStrLn "  If ratio stays constant → same complexity class"
+  putStrLn "  If ratio shrinks → corrections grow FASTER (bad)"
   putStrLn ""
 
   putStrLn "═══════════════════════════════════════════════════════════"
