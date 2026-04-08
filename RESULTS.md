@@ -368,3 +368,26 @@ At n=100 (projected):
   MITM: 2^50 ≈ 10^15
   Adaptive GS: 2^43 ≈ 10^13
   Improvement: ~100x
+
+## TWO-LEVEL: MITM outer + pruned group sieve inner
+
+```
+n     2-level    MITM      ratio
+8     68         48        0.71  (MITM wins, GS overhead)
+10    166        96        0.58
+12    307        192       0.63
+14    528        384       0.73
+16    844        768       0.91  ← approaching crossover
+18    1465       1536      1.05  ← 2-LEVEL WINS!
+20    2347       3072      1.31
+22    3436       6144      1.79
+24    4831       12288     2.54
+```
+
+Crossover at n=18. Growth rate ×1.55/n+2 vs MITM ×2.0/n+2.
+
+**Exponent: O(2^{0.32n}) vs MITM O(2^{0.50n}) vs BCJ O(2^{0.29n}).**
+
+Close to BCJ with a SIMPLER algorithm (no representations technique).
+The improvement comes from pruned cross-group DP at the inner level,
+which eliminates states that can't contribute to the target.
