@@ -28,6 +28,13 @@ module PeqNP.BitDecompose
   , overlapForMultiplier
   , bestMultiplier
   , showBasisSearch
+    -- * GF(2) transformations: non-linear overlap reduction
+  , BitMatrix
+  , weightsToBitMatrix
+  , overlapOfMatrix
+  , xorTransform
+  , searchGF2Transforms
+  , showGF2Results
   ) where
 
 import qualified Data.Set as Set
@@ -587,3 +594,102 @@ showBasisSearch elems maxC =
 
 padR'' :: Int -> String -> String
 padR'' n s = s ++ replicate (max 0 (n - length s)) ' '
+
+-- ═══════════════════════════════════════════════════════════
+-- GF(2) transformations: non-linear overlap reduction
+-- ═══════════════════════════════════════════════════════════
+
+-- | Bit matrix: each row is a weight's binary representation.
+-- Matrix[i][k] = bit k of weight i.
+type BitMatrix = [[Bool]]
+
+-- | Convert weights to a bit matrix (n rows × B columns)
+weightsToBitMatrix :: [Int] -> BitMatrix
+weightsToBitMatrix elems =
+  let b = maxBits elems
+  in [toBits b w | w <- elems]
+
+-- | Compute max overlap of a bit matrix.
+-- Overlap at column k = number of rows with True at column k
+-- that also have True at some column > k.
+overlapOfMatrix :: BitMatrix -> Int
+overlapOfMatrix [] = 0
+overlapOfMatrix mat =
+  let cols = length (head mat)
+      highestTrue row = maximum (-1 : [k | k <- [0..cols-1], row !! k])
+      overlapAt k = length [ row | row <- mat, row !! k, highestTrue row > k ]
+  in maximum (0 : [overlapAt k | k <- [0..cols-1]])
+
+-- | Apply a GF(2) column transformation: new_col_j = XOR of selected original columns.
+-- A transform is a list of (target_col, [source_cols_to_XOR]).
+-- This is a non-linear transformation of the INTEGER values
+-- but a linear transformation over GF(2) (the binary field).
+xorTransform :: BitMatrix -> [(Int, [Int])] -> BitMatrix
+xorTransform mat transforms =
+  let cols = length (head mat)
+      -- Start with original matrix
+      origCols = [[row !! k | row <- mat] | k <- [0..cols-1]]
+      -- Apply transforms: each transform XORs source columns into target
+      newCols = foldl applyOne origCols transforms
+  in transpose' newCols
+  where
+    applyOne :: [[Bool]] -> (Int, [Int]) -> [[Bool]]
+    applyOne colsArr (tgt, srcs) =
+      [ if k == tgt
+        then zipWith xorAll (colsArr !! tgt) [map (\s -> colsArr !! s !! i) srcs | i <- [0..length (head colsArr)-1]]
+        else colsArr !! k
+      | k <- [0..length colsArr - 1]
+      ]
+
+    xorAll :: Bool -> [Bool] -> Bool
+    xorAll base' extras = foldl (/=) base' extras
+
+    transpose' :: [[a]] -> [[a]]
+    transpose' [] = []
+    transpose' ([] : _) = []
+    transpose' xss = map head xss : transpose' (map tail xss)
+
+-- | Search for good GF(2) transforms by trying simple single-XOR operations.
+-- For each pair (i, j) where i ≠ j, try: new_col_i = col_i XOR col_j.
+-- Report the best overlap reduction found.
+searchGF2Transforms :: [Int] -> (Int, Int, String)  -- (original_overlap, best_overlap, description)
+searchGF2Transforms elems =
+  let mat = weightsToBitMatrix elems
+      cols = length (head mat)
+      origOverlap = overlapOfMatrix mat
+      -- Try all single XOR transforms
+      candidates =
+        [ (overlapOfMatrix (xorTransform mat [(i, [j])]),
+           "col" ++ show i ++ " ^= col" ++ show j)
+        | i <- [0..cols-1]
+        , j <- [0..cols-1]
+        , i /= j
+        ]
+      -- Also try double XOR (two transforms)
+      doubles =
+        [ (overlapOfMatrix (xorTransform mat [(i1, [j1]), (i2, [j2])]),
+           "col" ++ show i1 ++ "^=col" ++ show j1 ++ ", col" ++ show i2 ++ "^=col" ++ show j2)
+        | i1 <- [0..cols-1], j1 <- [0..cols-1], i1 /= j1
+        , i2 <- [0..cols-1], j2 <- [0..cols-1], i2 /= j2
+        , (i1,j1) < (i2,j2)  -- avoid duplicates
+        ]
+      allCandidates = candidates ++ take 50 doubles  -- limit doubles for speed
+      best = if null allCandidates
+             then (origOverlap, "none")
+             else minimumBy' allCandidates
+  in (origOverlap, fst best, snd best)
+  where
+    minimumBy' xs = foldl1 (\(o1,d1) (o2,d2) -> if o1 <= o2 then (o1,d1) else (o2,d2)) xs
+
+showGF2Results :: [Int] -> String
+showGF2Results elems =
+  let (orig, best, desc) = searchGF2Transforms elems
+  in unlines
+    [ "  Weights: " ++ show elems
+    , "  Original overlap: " ++ show orig
+    , "  Best GF(2) transform: " ++ desc
+    , "  New overlap: " ++ show best
+    , "  " ++ if best < orig
+              then "REDUCED by " ++ show (orig - best) ++ "! (" ++ show orig ++ " → " ++ show best ++ ")"
+              else "No improvement found."
+    ]

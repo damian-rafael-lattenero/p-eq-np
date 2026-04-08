@@ -26,7 +26,7 @@ import PeqNP.LazyTree (searchWithStats, showPruneStats)
 import PeqNP.Streaming (streamingSolve, showStreamStats)
 import PeqNP.Diagonal (diagonalExperiment, showDiagonalResults, greedyLargest, greedySmallest, alwaysInclude, alwaysSkip, thresholdHalf, alternating)
 import PeqNP.FingerTree (fingerTreeSolve, showFTStats, measureDifficulty, showDifficultyProfile)
-import PeqNP.BitDecompose (analyzeCarry, showCarryProfile, bitLevelSolve, BitLevelStats(..), decomposeProblem, BitColumn(..), coupledBitSolve, showCoupledStats, untieRetieExperiment, showUntieRetie, interleavedSolve, showInterleavedStats, showBasisSearch)
+import PeqNP.BitDecompose (analyzeCarry, showCarryProfile, bitLevelSolve, BitLevelStats(..), decomposeProblem, BitColumn(..), coupledBitSolve, showCoupledStats, untieRetieExperiment, showUntieRetie, interleavedSolve, showInterleavedStats, showBasisSearch, showGF2Results)
 import PeqNP.UnifiedExperiments (unifiedAnalysis, showUnifiedTable)
 
 main :: IO ()
@@ -551,6 +551,27 @@ main = do
 
   putStrLn "  Dense: [7,11,13,14] (lots of shared bits):"
   putStr $ showBasisSearch [7,11,13,14] 20
+  putStrLn ""
+
+  sectionHeader "33. GF(2) TRANSFORMS: non-linear overlap reduction"
+  putStrLn "  Linear multiplication can't reduce overlap. But XOR-based"
+  putStrLn "  transforms (mixing bits) are NON-LINEAR and might help."
+  putStrLn ""
+
+  putStrLn "  [3,5,7] (all odd, overlap=3 at bit 0):"
+  putStr $ showGF2Results [3,5,7]
+  putStrLn ""
+
+  putStrLn "  [1,2,3,5,8,13] (fibonacci):"
+  putStr $ showGF2Results [1,2,3,5,8,13]
+  putStrLn ""
+
+  putStrLn "  [7,11,13,14] (dense binary):"
+  putStr $ showGF2Results [7,11,13,14]
+  putStrLn ""
+
+  putStrLn "  [3,5,6,7] (very dense):"
+  putStr $ showGF2Results [3,5,6,7]
   putStrLn ""
 
   putStrLn "═══════════════════════════════════════════════════════════"
