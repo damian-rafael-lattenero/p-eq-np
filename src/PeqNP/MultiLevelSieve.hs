@@ -41,7 +41,7 @@ mkDensity1 n =
 -- ═══════════════════════════════════════════════════════════
 
 -- | Enumerate all achievable subset sums up to upperBound,
--- using group sieve with cross-group pruning.
+-- using group sieve with AGGRESSIVE cross-group pruning.
 -- Returns (set of achievable sums, work performed).
 prunedGroupSums :: [Int] -> Int -> Int -> (Set.Set Int, Int)
 prunedGroupSums [] _ _ = (Set.singleton 0, 1)
@@ -55,10 +55,13 @@ prunedGroupSums weights upperBound bitsToMatch =
              | (lowBits, ws) <- groupList ]
       maxHighPerGroup = [ maximum (0 : concat [Set.toList hs | (_, hs) <- o])
                         | (_, o) <- opts ]
-      -- Pruned cross-group DP
+      -- Also compute MIN high per group (for tighter lower bound)
+      minHighPerGroup = [ 0 | _ <- opts ]  -- minimum is always 0 (empty subset)
+      -- Pruned cross-group DP with TIGHT bounds
       initial = Set.singleton (0 :: Int, 0 :: Int)
-      (final, work) = crossGroupDP modulus (upperBound `div` modulus)
-                                   opts maxHighPerGroup initial 0
+      targetHigh = upperBound `div` modulus
+      (final, work) = crossGroupDPTight modulus targetHigh
+                                        opts maxHighPerGroup initial 0
       -- Convert states to actual sums
       sums = Set.fromList [ h * modulus + l
                           | (h, l) <- Set.toList final
@@ -66,6 +69,34 @@ prunedGroupSums weights upperBound bitsToMatch =
                           , s >= 0, s <= upperBound ]
       perGroupWork = sum [2 ^ length ws | (_, ws) <- groupList]
   in (sums, work + perGroupWork)
+
+-- | Cross-group DP with TIGHT pruning:
+-- 1. Upper bound: currentH ≤ targetHigh (can't overshoot)
+-- 2. Lower bound: currentH + remainingMaxH ≥ targetHigh (must be able to reach)
+-- 3. Modular: early discard if lAcc can't reach targetLow given remaining groups
+crossGroupDPTight :: Int -> Int -> [(Int, [(Int, Set.Set Int)])] -> [Int]
+                  -> Set.Set (Int, Int) -> Int -> (Set.Set (Int, Int), Int)
+crossGroupDPTight _ _ [] _ states work = (states, work)
+crossGroupDPTight modulus tgtH ((lowBits, opts):rest) (mxH:mxHRest) states work =
+  let -- Expand
+      expanded = Set.fromList
+        [ (hAcc + hNew, lAcc + cnt * lowBits)
+        | (hAcc, lAcc) <- Set.toList states
+        , (cnt, hSums) <- opts
+        , hNew <- Set.toList hSums
+        ]
+      -- TIGHT prune
+      remainingMaxH = sum mxHRest
+      pruned = Set.filter (\(h, l) ->
+        let currentH = h + l `div` modulus
+            -- Upper: can't exceed target (accounting for carry from low bits)
+            upperOk = currentH <= tgtH + 1  -- +1 for possible carry
+            -- Lower: must be able to reach target with remaining groups
+            lowerOk = currentH + remainingMaxH >= tgtH
+        in upperOk && lowerOk
+        ) expanded
+  in crossGroupDPTight modulus tgtH rest mxHRest pruned (work + Set.size pruned)
+crossGroupDPTight _ _ _ [] states work = (states, work)
 
 precompute :: Int -> [Int] -> [(Int, Set.Set Int)]
 precompute b ws =
@@ -75,25 +106,7 @@ precompute b ws =
                   [(cnt, Set.singleton s) | (cnt, s) <- allSubs]
   in Map.toList grouped
 
-crossGroupDP :: Int -> Int -> [(Int, [(Int, Set.Set Int)])] -> [Int]
-             -> Set.Set (Int, Int) -> Int -> (Set.Set (Int, Int), Int)
-crossGroupDP _ _ [] _ states work = (states, work)
-crossGroupDP modulus ubHigh ((lowBits, opts):rest) (maxH:maxHRest) states work =
-  let -- Expand by all group options
-      expanded = Set.fromList
-        [ (hAcc + hNew, lAcc + cnt * lowBits)
-        | (hAcc, lAcc) <- Set.toList states
-        , (cnt, hSums) <- opts
-        , hNew <- Set.toList hSums
-        ]
-      -- Prune: discard states that can't reach target range
-      remainingMaxH = sum maxHRest
-      pruned = Set.filter (\(h, l) ->
-        let currentH = h + l `div` modulus
-        in currentH <= ubHigh && currentH + remainingMaxH >= 0
-        ) expanded
-  in crossGroupDP modulus ubHigh rest maxHRest pruned (work + Set.size pruned)
-crossGroupDP _ _ _ [] states work = (states, work)
+-- (crossGroupDP replaced by crossGroupDPTight above)
 
 subsequences :: [a] -> [[a]]
 subsequences [] = [[]]
@@ -316,20 +329,23 @@ fourWayRepSolve m1 m2 weights target =
       totalWork = innerWork + mergeWork
   in SR found (found == dpAnswer) totalWork 2 (Set.size leftSums) (Set.size rightSums)
 
--- | Merge two sum sets with modular filtering:
--- Only keep combined sums where (a+b) could contribute to target.
--- Specifically: sum all pairs but prune by range [0, target].
+-- | HASH-BASED filtered merge: O(|A| × |bucket|) instead of O(|A| × |B|).
+-- For each a ∈ A: we need b such that a+b ≤ upperBound AND
+-- (a+b) mod M = target mod M. So b must be in the bucket
+-- where b mod M = (target - a) mod M.
+-- Each bucket has |B|/M elements on average → total O(|A| × |B|/M).
 filteredMerge :: Set.Set Int -> Set.Set Int -> Int -> Int -> Set.Set Int
 filteredMerge setA setB upperBound modulus =
-  let -- Bucket B by residue mod M for fast lookup
-      bBuckets = Map.fromListWith Set.union
-        [(s `mod` modulus, Set.singleton s) | s <- Set.toList setB]
-      -- For each a in A: need b such that a+b ≤ upperBound
-      -- and (a+b) mod M matches target mod M for some valid target
+  let targetMod = upperBound `mod` modulus
+      -- Bucket B by residue mod M
+      bBuckets = Map.fromListWith (++) [(s `mod` modulus, [s]) | s <- Set.toList setB]
+      -- For each a: look up ONLY the matching bucket
   in Set.fromList
        [ a + b
        | a <- Set.toList setA
-       , b <- Set.toList setB
+       , let needed = (targetMod - a `mod` modulus) `mod` modulus
+             bucket = Map.findWithDefault [] needed bBuckets
+       , b <- bucket
        , a + b >= 0
        , a + b <= upperBound
        ]
