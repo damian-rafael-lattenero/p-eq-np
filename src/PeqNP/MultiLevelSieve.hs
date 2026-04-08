@@ -59,11 +59,10 @@ prunedGroupSums weights upperBound bitsToMatch =
                         | (_, o) <- opts ]
       -- Also compute MIN high per group (for tighter lower bound)
       minHighPerGroup = [ 0 | _ <- opts ]  -- minimum is always 0 (empty subset)
-      -- Pruned cross-group DP with TIGHT bounds
+      -- Cross-group DP with upper-only pruning (safe, no false negatives)
       initial = Set.singleton (0 :: Int, 0 :: Int)
-      targetHigh = upperBound `div` modulus
-      (final, work) = crossGroupDPTight modulus targetHigh
-                                        opts maxHighPerGroup initial 0
+      upperH = upperBound `div` modulus + length opts + 2
+      (final, work) = crossGroupAll modulus upperH opts initial 0
       -- Convert states to actual sums
       sums = Set.fromList [ h * modulus + l
                           | (h, l) <- Set.toList final
@@ -72,10 +71,9 @@ prunedGroupSums weights upperBound bitsToMatch =
       perGroupWork = sum [2 ^ length ws | (_, ws) <- groupList]
   in (sums, work + perGroupWork)
 
--- | Cross-group DP with TIGHT pruning:
--- 1. Upper bound: currentH ≤ targetHigh (can't overshoot)
--- 2. Lower bound: currentH + remainingMaxH ≥ targetHigh (must be able to reach)
--- 3. Modular: early discard if lAcc can't reach targetLow given remaining groups
+-- | Cross-group DP with SAFE pruning:
+-- Only prune states that DEFINITELY can't reach target.
+-- Account for maximum possible carry from remaining low-bit accumulation.
 crossGroupDPTight :: Int -> Int -> [(Int, [(Int, Set.Set Int)])] -> [Int]
                   -> Set.Set (Int, Int) -> Int -> (Set.Set (Int, Int), Int)
 crossGroupDPTight _ _ [] _ states work = (states, work)
@@ -87,15 +85,12 @@ crossGroupDPTight modulus tgtH ((lowBits, opts):rest) (mxH:mxHRest) states work 
         , (cnt, hSums) <- opts
         , hNew <- Set.toList hSums
         ]
-      -- TIGHT prune
-      remainingMaxH = sum mxHRest
-      pruned = Set.filter (\(h, l) ->
-        let currentH = h + l `div` modulus
-            -- Upper: can't exceed target (accounting for carry from low bits)
-            upperOk = currentH <= tgtH + 1  -- +1 for possible carry
-            -- Lower: must be able to reach target with remaining groups
-            lowerOk = currentH + remainingMaxH >= tgtH
-        in upperOk && lowerOk
+      -- SAFE prune: ONLY upper bound, NO lower bound.
+      -- Lower bound pruning caused false negatives because carry from
+      -- low-bit accumulation is unknown until the end.
+      pruned = Set.filter (\(h, _l) ->
+        -- Upper: h parts alone can't exceed target high (even without carry)
+        h <= tgtH + length rest + 2  -- generous margin for carry
         ) expanded
   in crossGroupDPTight modulus tgtH rest mxHRest pruned (work + Set.size pruned)
 crossGroupDPTight _ _ _ [] states work = (states, work)
@@ -177,20 +172,20 @@ solveInner :: Int -> [Int] -> Int -> (Set.Set Int, Set.Set Int, Int)
 solveInner _ weights target | length weights <= 6 =
   let sums = bruteForceDP weights
   in (sums, sums, Set.size sums)
-solveInner 0 weights target =
-  -- Base level: pruned group sieve, try bits=1,2,3 pick best
-  let bestB = pickBestBits weights target
-      (sums, work) = prunedGroupSums weights target bestB
-  in (sums, sums, work)
-solveInner levels weights target =
+solveInner 0 weights _target =
+  -- Base level: enumerate ALL sums via brute force DP (guaranteed correct)
+  let sums = bruteForceDP weights
+  in (sums, sums, Set.size sums)
+solveInner levels weights _target =
   let n = length weights
       mid = n `div` 2
       (leftW, rightW) = splitAt mid weights
-      -- Recurse on each half
-      bestBL = pickBestBits leftW target
-      bestBR = pickBestBits rightW target
-      (leftSums, _, leftWork) = solveInner (levels - 1) leftW target
-      (rightSums, _, rightWork) = solveInner (levels - 1) rightW target
+      -- Recurse: each half enumerates ALL its sums
+      (llSums, lrSums, leftWork) = solveInner (levels - 1) leftW 0
+      (rlSums, rrSums, rightWork) = solveInner (levels - 1) rightW 0
+      -- COMBINE: merge sub-halves into full half sums
+      leftSums = Set.fromList [a + b | a <- Set.toList llSums, b <- Set.toList lrSums]
+      rightSums = Set.fromList [a + b | a <- Set.toList rlSums, b <- Set.toList rrSums]
       mergeWork = Set.size leftSums
   in (leftSums, rightSums, leftWork + rightWork + mergeWork)
 
