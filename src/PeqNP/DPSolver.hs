@@ -1,11 +1,14 @@
 module PeqNP.DPSolver
   ( dpTable
+  , dpReachable
   , solveDP
   , solveDPAll
   ) where
 
 import qualified Data.Map.Strict as Map
 import Data.Map.Strict (Map)
+import qualified Data.Set as Set
+import Data.Set (Set)
 
 -- | Dynamic Programming for Subset Sum, framed as categorical quotienting.
 --
@@ -30,6 +33,13 @@ dpTable = foldl step (Map.singleton 0 [[]])
       Map.unionWith (++) table $
         Map.mapKeys (+ x) $
           Map.map (map (x :)) table
+
+-- | Memory-efficient reachability: only tracks WHICH sums are reachable,
+-- not which subsets achieve them. O(n * max_sum) time and space.
+dpReachable :: [Int] -> Set Int
+dpReachable = foldl step (Set.singleton 0)
+  where
+    step reachable x = Set.union reachable (Set.map (+ x) reachable)
 
 -- | Solve: is there any path whose metadata equals the target?
 solveDP :: [Int] -> Int -> Maybe [Int]

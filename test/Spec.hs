@@ -17,8 +17,13 @@ import PeqNP.FiniteMonoid (ZMod(..), BoolOr(..))
 import qualified PeqNP.FiniteMonoid as FM
 import PeqNP.Search (searchMonoid, MonoidReport(..))
 import PeqNP.Impossibility (minDistinguishingModulus, MinSizeResult(..))
+import PeqNP.DPSolver (dpReachable)
+import PeqNP.ReachMonad (buildReachTree, totalDistinctStates, distinctStatesPerLevel, reachSetOf)
+import PeqNP.MyhillNerode (mnClassify, MNResult(..), mnClassesPerLevel)
+import PeqNP.VariableOrdering (naturalOrder, sortedAsc, greedyMinStates, OrderingResult(..))
 
 import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 
 import Data.List (sort)
 
@@ -36,6 +41,9 @@ tests = testGroup "P=NP Enriched Category"
   , finiteMonoidTests
   , correctedFunctorTests
   , preservationTests
+  , reachMonadTests
+  , myhillNerodeTests
+  , variableOrderingTests
   ]
 
 -- ═══════════════════════════════════════════════════════════
@@ -343,6 +351,73 @@ preservationTests = testGroup "Answer preservation"
 
   , testProperty "[3,7,5,2] target 10 (YES): any modulus works" $
       msrMinModulus (minDistinguishingModulus [3,7,5,2] 10 100) === Just 1
+  ]
+
+-- ═══════════════════════════════════════════════════════════
+-- Group 10: Reachability monad
+-- ═══════════════════════════════════════════════════════════
+
+reachMonadTests :: TestTree
+reachMonadTests = testGroup "Reachability monad"
+  [ testProperty "root reachSet matches dpReachable" $
+      forAll smallList $ \xs ->
+        let tree = buildReachTree xs
+        in reachSetOf tree === dpReachable xs
+
+  , testProperty "distinct states per level is monotonically bounded by 2^level" $
+      forAll smallList $ \xs ->
+        let levels = distinctStatesPerLevel (buildReachTree xs)
+        in all (\(i, count) -> count <= 2^i) (zip [(0::Int)..] levels)
+
+  , testProperty "leaf level has exactly 2^n states or fewer" $
+      forAll smallList $ \xs ->
+        let levels = distinctStatesPerLevel (buildReachTree xs)
+        in last levels <= 2 ^ length xs
+  ]
+
+-- ═══════════════════════════════════════════════════════════
+-- Group 11: Myhill-Nerode
+-- ═══════════════════════════════════════════════════════════
+
+myhillNerodeTests :: TestTree
+myhillNerodeTests = testGroup "Myhill-Nerode equivalence"
+  [ testProperty "MN classes always <= 2 per level" $
+      forAll genSmallSubsetSumInstance $ \(xs, target) ->
+        not (null xs) ==>
+          all (<= 2) (mnClassesPerLevel xs target)
+
+  , testProperty "MN classes <= distinct sums at each level" $
+      forAll genSmallSubsetSumInstance $ \(xs, target) ->
+        not (null xs) ==>
+          let mn = mnClassify xs target
+          in and (zipWith (<=) (mnClassesPerLvl mn) (mnSumsPerLvl mn))
+
+  , testProperty "[3,7,5,2] target 10: MN has at most 2 classes" $
+      all (<= 2) (mnClassesPerLevel [3,7,5,2] 10)
+  ]
+
+-- ═══════════════════════════════════════════════════════════
+-- Group 12: Variable ordering
+-- ═══════════════════════════════════════════════════════════
+
+variableOrderingTests :: TestTree
+variableOrderingTests = testGroup "Variable ordering"
+  [ testProperty "all orderings reach same final state count" $
+      forAll smallList $ \xs ->
+        not (null xs) ==>
+          let natFinal = last (orStatesPerLevel (naturalOrder xs))
+              ascFinal = last (orStatesPerLevel (sortedAsc xs))
+          in natFinal === ascFinal
+
+  , testProperty "greedy never worse than natural order" $
+      forAll smallList $ \xs ->
+        not (null xs) ==>
+          orMaxStates (greedyMinStates xs) <= orMaxStates (naturalOrder xs)
+
+  , testProperty "final level = number of distinct reachable sums" $
+      forAll smallList $ \xs ->
+        let finalStates = last (orStatesPerLevel (naturalOrder xs))
+        in finalStates === Set.size (dpReachable xs)
   ]
 
 -- ═══════════════════════════════════════════════════════════

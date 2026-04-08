@@ -23,6 +23,11 @@ library
     PeqNP.Search
     PeqNP.Impossibility
     PeqNP.Report
+    PeqNP.ReachMonad
+    PeqNP.MyhillNerode
+    PeqNP.VariableOrdering
+    PeqNP.Adjunction
+    PeqNP.CategoryExperiments
   build-depends:
     base >= 4.21 && < 5,
     containers >= 0.7
