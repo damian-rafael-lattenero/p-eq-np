@@ -26,7 +26,7 @@ import PeqNP.LazyTree (searchWithStats, showPruneStats)
 import PeqNP.Streaming (streamingSolve, showStreamStats)
 import PeqNP.Diagonal (diagonalExperiment, showDiagonalResults, greedyLargest, greedySmallest, alwaysInclude, alwaysSkip, thresholdHalf, alternating)
 import PeqNP.FingerTree (fingerTreeSolve, showFTStats, measureDifficulty, showDifficultyProfile)
-import PeqNP.BitDecompose (analyzeCarry, showCarryProfile, bitLevelSolve, BitLevelStats(..), decomposeProblem, BitColumn(..), coupledBitSolve, showCoupledStats, untieRetieExperiment, showUntieRetie, interleavedSolve, showInterleavedStats, showBasisSearch, showGF2Results)
+import PeqNP.BitDecompose (analyzeCarry, showCarryProfile, bitLevelSolve, BitLevelStats(..), decomposeProblem, BitColumn(..), coupledBitSolve, showCoupledStats, untieRetieExperiment, showUntieRetie, interleavedSolve, showInterleavedStats, showBasisSearch, showGF2Results, solveInTransformedBasis, showGF2SolverResult)
 import PeqNP.UnifiedExperiments (unifiedAnalysis, showUnifiedTable)
 
 main :: IO ()
@@ -572,6 +572,27 @@ main = do
 
   putStrLn "  [3,5,6,7] (very dense):"
   putStr $ showGF2Results [3,5,6,7]
+  putStrLn ""
+
+  sectionHeader "34. SOLVING in GF(2)-transformed basis"
+  putStrLn "  Transform weights to reduce overlap, then run interleaved"
+  putStrLn "  solver on transformed weights. Does it use fewer states?"
+  putStrLn ""
+
+  putStrLn "  [3,5,7] target=8 (YES: 3+5):"
+  putStr $ showGF2SolverResult (solveInTransformedBasis [3,5,7] 8)
+  putStrLn ""
+
+  putStrLn "  [3,5,7] target=6 (NO):"
+  putStr $ showGF2SolverResult (solveInTransformedBasis [3,5,7] 6)
+  putStrLn ""
+
+  putStrLn "  [1,2,3,5,8,13] target=15 (YES):"
+  putStr $ showGF2SolverResult (solveInTransformedBasis [1,2,3,5,8,13] 15)
+  putStrLn ""
+
+  putStrLn "  [3,5,6,7] target=11 (YES: 5+6):"
+  putStr $ showGF2SolverResult (solveInTransformedBasis [3,5,6,7] 11)
   putStrLn ""
 
   putStrLn "═══════════════════════════════════════════════════════════"

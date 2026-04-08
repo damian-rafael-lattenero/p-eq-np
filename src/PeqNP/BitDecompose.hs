@@ -35,6 +35,10 @@ module PeqNP.BitDecompose
   , xorTransform
   , searchGF2Transforms
   , showGF2Results
+    -- * Solver in GF(2)-transformed basis
+  , GF2SolverResult(..)
+  , solveInTransformedBasis
+  , showGF2SolverResult
   ) where
 
 import qualified Data.Set as Set
@@ -693,3 +697,124 @@ showGF2Results elems =
               then "REDUCED by " ++ show (orig - best) ++ "! (" ++ show orig ++ " → " ++ show best ++ ")"
               else "No improvement found."
     ]
+
+-- ═══════════════════════════════════════════════════════════
+-- Solver in GF(2)-transformed basis
+-- ═══════════════════════════════════════════════════════════
+
+-- | THE KEY EXPERIMENT: solve Subset Sum in the GF(2)-transformed basis.
+--
+-- APPROACH: The GF(2) transform changes the bit matrix but NOT the problem.
+-- We still need: Σ (selected weights) = target, in the ORIGINAL integers.
+--
+-- The transform reduces OVERLAP but changes the CARRY structure.
+-- In the original basis: carry at bit k = (sum of selected bits at k + carry_in) / 2
+-- In the transformed basis: the "sum" at each position involves XOR-mixed bits,
+-- so the carry propagation is non-standard.
+--
+-- CONCRETE APPROACH: Don't transform the carry. Instead:
+-- 1. Find the best GF(2) transform that minimizes overlap
+-- 2. Transform the weight bit matrix AND the target bits
+-- 3. Run the interleaved solver on transformed bits
+-- 4. The coupling decisions (which weights to include) are INVARIANT
+--    under the transform — we're choosing the same subset
+-- 5. But we need to verify: does the carry work correctly?
+--
+-- ANSWER: The carry DOESN'T directly work in the transformed basis
+-- because XOR transforms mix the positional values. HOWEVER:
+-- we can reformulate: instead of tracking carry (an integer),
+-- track the full partial sum and check each TRANSFORMED bit.
+-- The state at each bit position = set of (partial_sum mod 2^(k+1))
+-- values that are consistent with a valid selection.
+-- This is the same as coupledBitSolve but on transformed bits.
+--
+-- THE QUESTION: does the TRANSFORMED overlap affect the state count?
+
+data GF2SolverResult = GF2R
+  { gf2Found          :: Bool
+  , gf2Correct        :: Bool
+  , gf2OrigOverlap    :: Int
+  , gf2TransOverlap   :: Int
+  , gf2TransformDesc  :: String
+  , gf2OrigMaxStates  :: Int    -- interleaved solver on original
+  , gf2TransMaxStates :: Int    -- interleaved solver on transformed weights
+  , gf2OrigStatesPerBit :: [Int]
+  , gf2TransStatesPerBit :: [Int]
+  } deriving (Show)
+
+solveInTransformedBasis :: [Int] -> Int -> GF2SolverResult
+solveInTransformedBasis elems target =
+  let -- Find best GF(2) transform
+      (origOverlap, transOverlap, desc) = searchGF2Transforms elems
+
+      -- Transform the weights: apply the same column XOR to get new integer values
+      mat = weightsToBitMatrix elems
+      b = length (head mat)
+
+      -- Find the actual best transform operations
+      bestOps = findBestOps mat
+      transMat = xorTransform mat bestOps
+
+      -- Convert transformed bit matrix back to integers
+      transWeights = map fromBits transMat
+      transTarget = transformTarget target b bestOps
+
+      -- Run interleaved solver on BOTH original and transformed
+      origStats = interleavedSolve elems target
+      transStats = interleavedSolve transWeights transTarget
+
+      -- Verify correctness: does the transformed solver give the right answer?
+      dpAnswer = Set.member target (dpReachableLocal elems)
+
+  in GF2R
+    { gf2Found          = isFound transStats
+    , gf2Correct        = isFound transStats == dpAnswer
+    , gf2OrigOverlap    = origOverlap
+    , gf2TransOverlap   = transOverlap
+    , gf2TransformDesc  = desc
+    , gf2OrigMaxStates  = isMaxStates origStats
+    , gf2TransMaxStates = isMaxStates transStats
+    , gf2OrigStatesPerBit  = isStatesPerBit origStats
+    , gf2TransStatesPerBit = isStatesPerBit transStats
+    }
+
+-- | Transform a target value using the same GF(2) column operations
+transformTarget :: Int -> Int -> [(Int, [Int])] -> Int
+transformTarget target b ops =
+  let targetBits = toBits b target
+      targetMat = [targetBits]  -- 1-row matrix
+      transMat = xorTransform targetMat ops
+  in fromBits (head transMat)
+
+-- | Find the actual best single/double XOR operations (replicating searchGF2Transforms logic)
+findBestOps :: BitMatrix -> [(Int, [Int])]
+findBestOps mat =
+  let cols = length (head mat)
+      origOverlap = overlapOfMatrix mat
+      -- Try single XOR operations
+      singles = [ (overlapOfMatrix (xorTransform mat [(i,[j])]), [(i,[j])])
+                | i <- [0..cols-1], j <- [0..cols-1], i /= j ]
+      -- Try double XOR
+      doubles = [ (overlapOfMatrix (xorTransform mat [(i1,[j1]),(i2,[j2])]), [(i1,[j1]),(i2,[j2])])
+                | i1 <- [0..cols-1], j1 <- [0..cols-1], i1 /= j1
+                , i2 <- [0..cols-1], j2 <- [0..cols-1], i2 /= j2
+                , (i1,j1) < (i2,j2) ]
+      all' = singles ++ take 50 doubles
+      best = if null all' then []
+             else snd $ foldl1 (\(o1,d1) (o2,d2) -> if o1 <= o2 then (o1,d1) else (o2,d2)) all'
+  in best
+
+showGF2SolverResult :: GF2SolverResult -> String
+showGF2SolverResult r = unlines
+  [ "  Transform: " ++ gf2TransformDesc r
+  , "  Overlap:  " ++ show (gf2OrigOverlap r) ++ " → " ++ show (gf2TransOverlap r)
+  , "  Found:    " ++ show (gf2Found r)
+  , "  Correct:  " ++ show (gf2Correct r)
+  , "  Original  states/bit: " ++ show (gf2OrigStatesPerBit r) ++ " max=" ++ show (gf2OrigMaxStates r)
+  , "  Transformed states/bit: " ++ show (gf2TransStatesPerBit r) ++ " max=" ++ show (gf2TransMaxStates r)
+  , "  " ++ if gf2TransMaxStates r < gf2OrigMaxStates r
+            then "FEWER STATES in transformed basis! (" ++ show (gf2OrigMaxStates r) ++ " → " ++ show (gf2TransMaxStates r) ++ ")"
+            else if gf2TransMaxStates r == gf2OrigMaxStates r
+            then "Same number of states."
+            else "MORE states in transformed basis (" ++ show (gf2OrigMaxStates r) ++ " → " ++ show (gf2TransMaxStates r) ++ ")"
+  ]
