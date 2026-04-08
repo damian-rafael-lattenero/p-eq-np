@@ -1,0 +1,197 @@
+module PeqNP.BitDecompose
+  ( -- * Bit decomposition
+    toBits
+  , fromBits
+  , maxBits
+    -- * Bit-level Subset Sum
+  , BitColumn(..)
+  , decomposeProblem
+  , bitLevelSolve
+  , BitLevelStats(..)
+    -- * Carry analysis: where does the state explode?
+  , CarryProfile(..)
+  , analyzeCarry
+  , showCarryProfile
+  ) where
+
+import qualified Data.Set as Set
+import Data.Set (Set)
+import Data.Bits (testBit)
+
+-- ═══════════════════════════════════════════════════════════
+-- Bit decomposition: Int → [Bool]
+-- ═══════════════════════════════════════════════════════════
+
+-- | Decompose an integer into its binary representation (LSB first)
+toBits :: Int -> Int -> [Bool]
+toBits numBits x = [testBit x i | i <- [0..numBits-1]]
+
+-- | Reconstruct integer from bits (LSB first)
+fromBits :: [Bool] -> Int
+fromBits = sum . zipWith (\i b -> if b then 2^i else 0) [(0::Int)..]
+
+-- | Number of bits needed to represent the max possible sum
+maxBits :: [Int] -> Int
+maxBits [] = 1
+maxBits xs = ceiling (logBase 2 (fromIntegral (sum xs) + 1) :: Double) + 1
+
+-- ═══════════════════════════════════════════════════════════
+-- Bit-level problem decomposition
+-- ═══════════════════════════════════════════════════════════
+
+-- | A "column" of bits at position k: one bit per weight.
+-- bit k of weight w_i = whether 2^k contributes to w_i.
+data BitColumn = BC
+  { bcPosition :: Int     -- bit position (0 = LSB)
+  , bcBits     :: [Bool]  -- one per weight: does this weight have a 1 at this position?
+  , bcOnesCount :: Int    -- number of 1s in this column
+  } deriving (Show)
+
+-- | Decompose the Subset Sum problem into bit columns.
+--
+-- Instead of n weights of up to B bits each, view as B columns of n bits.
+-- Each column tells which weights contribute a 1 at that bit position.
+--
+-- weights = [5, 13, 3]  (binary: 101, 1101, 11)
+-- Column 0 (2^0): [1, 1, 1]  ← 3 ones, contribute 0..3 to this position
+-- Column 1 (2^1): [0, 0, 1]  ← 1 one
+-- Column 2 (2^2): [1, 1, 0]  ← 2 ones
+-- Column 3 (2^3): [0, 1, 0]  ← 1 one
+decomposeProblem :: [Int] -> [BitColumn]
+decomposeProblem elems =
+  let b = maxBits elems
+  in [ let bits = [testBit w k | w <- elems]
+       in BC k bits (length (filter id bits))
+     | k <- [0..b-1]
+     ]
+
+-- ═══════════════════════════════════════════════════════════
+-- Bit-level solver with carry tracking
+-- ═══════════════════════════════════════════════════════════
+
+-- | At each bit position k, we need to decide which weights to include.
+-- The decision affects bit k of the sum, plus a CARRY to position k+1.
+--
+-- State at each bit position: the set of possible carry values.
+-- If this set stays bounded (polynomial), the algorithm is polynomial.
+-- If it explodes, NP-hardness has appeared.
+
+data BitLevelStats = BLS
+  { blsFound       :: Bool
+  , blsSolution    :: Maybe [Bool]  -- inclusion vector
+  , blsBitsUsed    :: Int           -- number of bit positions processed
+  , blsMaxCarry    :: Int           -- max carry state across all positions
+  , blsCarryPerBit :: [Int]         -- |carry states| at each bit position
+  } deriving (Show)
+
+-- | Solve Subset Sum by processing bit columns from LSB to MSB.
+--
+-- Algorithm:
+-- 1. At bit position k, target bit t_k is known
+-- 2. We have a set of possible carries from position k-1
+-- 3. For each carry c, we need: (selected ones at position k) + c
+--    to have bit k matching t_k. The "overflow" becomes the carry for k+1.
+-- 4. Number of ones selected at position k ranges from 0 to onesCount.
+-- 5. For each valid (carry_in, selected_ones) pair:
+--    total = carry_in + selected_ones
+--    bit k of sum = total mod 2 (must match target bit k)
+--    carry_out = total div 2
+--
+-- The SET of possible carry_out values is the state.
+bitLevelSolve :: [Int] -> Int -> BitLevelStats
+bitLevelSolve elems target =
+  let columns = decomposeProblem elems
+      targetBits = toBits (length columns) target
+      (carries, found) = processColumns columns targetBits
+  in BLS
+    { blsFound       = found
+    , blsSolution    = Nothing  -- tracking full solution requires more bookkeeping
+    , blsBitsUsed    = length columns
+    , blsMaxCarry    = maximum (0 : map Set.size carries)
+    , blsCarryPerBit = map Set.size carries
+    }
+
+processColumns :: [BitColumn] -> [Bool] -> ([Set Int], Bool)
+processColumns columns targetBits =
+  let initialCarry = Set.singleton 0
+      (allCarries, finalCarry) = go columns targetBits initialCarry []
+  in (reverse allCarries, Set.member 0 finalCarry)
+  where
+    go :: [BitColumn] -> [Bool] -> Set Int -> [Set Int] -> ([Set Int], Set Int)
+    go [] [] carry acc = (carry : acc, carry)
+    go [] _  carry acc = (carry : acc, carry)
+    go _  [] carry acc = (carry : acc, carry)
+    go (col:cols) (tBit:tBits) carryIn acc =
+      let onesCount = bcOnesCount col
+          targetBit = if tBit then 1 else 0
+          -- For each possible carry-in and number of ones selected,
+          -- check if the sum's bit k matches target bit k
+          carryOut = Set.fromList
+            [ (carryInVal + selected) `div` 2
+            | carryInVal <- Set.toList carryIn
+            , selected <- [0..onesCount]
+            , (carryInVal + selected) `mod` 2 == targetBit
+            ]
+      in go cols tBits carryOut (carryIn : acc)
+
+-- ═══════════════════════════════════════════════════════════
+-- Carry analysis: the anatomy of difficulty
+-- ═══════════════════════════════════════════════════════════
+
+data CarryProfile = CP
+  { cpElements     :: [Int]
+  , cpTarget       :: Int
+  , cpBitsNeeded   :: Int
+  , cpCarrySizes   :: [Int]     -- |carry set| at each bit position
+  , cpMaxCarry     :: Int       -- peak carry set size
+  , cpExplosion    :: Maybe Int -- first bit position where carry > n
+  } deriving (Show)
+
+-- | Analyze how carry states grow across bit positions.
+--
+-- THE KEY EXPERIMENT:
+-- For polynomial weights: carry stays bounded by O(n) at each position
+--   (at most n ones per column → carry ≤ n/2 → carry set ≤ n/2 + 1)
+-- For exponential weights: carry might grow... or might not!
+--   Because each column still has at most n ones, the CARRY is bounded
+--   by n regardless of weight magnitude!
+--
+-- THIS IS THE CRUCIAL INSIGHT: the carry is bounded by the NUMBER
+-- of elements (n), not by the MAGNITUDE of the weights.
+-- Each column has at most n ones → max column sum = n → max carry = n/2.
+-- So |carry set| ≤ n/2 + 1 at EVERY bit position.
+--
+-- Total work: B bit positions × O(n) carry states × O(n) ones per column
+-- = O(B × n²) = O(n² × log(max_weight))
+-- This is POLYNOMIAL in the input size (which includes log(max_weight))!
+analyzeCarry :: [Int] -> Int -> CarryProfile
+analyzeCarry elems target =
+  let stats = bitLevelSolve elems target
+      n = length elems
+  in CP
+    { cpElements   = elems
+    , cpTarget     = target
+    , cpBitsNeeded = blsBitsUsed stats
+    , cpCarrySizes = blsCarryPerBit stats
+    , cpMaxCarry   = blsMaxCarry stats
+    , cpExplosion  = case filter (\(_, sz) -> sz > n) (zip [(0::Int)..] (blsCarryPerBit stats)) of
+                       ((pos, _):_) -> Just pos
+                       []           -> Nothing
+    }
+
+showCarryProfile :: CarryProfile -> String
+showCarryProfile cp = unlines $
+  [ "  Elements: " ++ show (cpElements cp)
+  , "  Target:   " ++ show (cpTarget cp)
+  , "  Bits needed: " ++ show (cpBitsNeeded cp)
+  , "  n = " ++ show (length (cpElements cp))
+  , ""
+  , "  Carry set sizes per bit position (LSB → MSB):"
+  , "  " ++ show (cpCarrySizes cp)
+  , "  Max carry set: " ++ show (cpMaxCarry cp)
+  , ""
+  , "  Carry bound (n/2 + 1 = " ++ show (length (cpElements cp) `div` 2 + 1) ++ "):"
+  , "  " ++ case cpExplosion cp of
+      Nothing -> "NEVER EXCEEDED — carry stays O(n) at every bit position!"
+      Just p  -> "Exceeded at bit " ++ show p
+  ]

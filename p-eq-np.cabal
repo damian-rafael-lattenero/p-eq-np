@@ -40,6 +40,7 @@ library
     PeqNP.Diagonal
     PeqNP.FingerTree
     PeqNP.UnifiedExperiments
+    PeqNP.BitDecompose
   build-depends:
     base >= 4.21 && < 5,
     containers >= 0.7

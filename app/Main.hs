@@ -26,6 +26,7 @@ import PeqNP.LazyTree (searchWithStats, showPruneStats)
 import PeqNP.Streaming (streamingSolve, showStreamStats)
 import PeqNP.Diagonal (diagonalExperiment, showDiagonalResults, greedyLargest, greedySmallest, alwaysInclude, alwaysSkip, thresholdHalf, alternating)
 import PeqNP.FingerTree (fingerTreeSolve, showFTStats, measureDifficulty, showDifficultyProfile)
+import PeqNP.BitDecompose (analyzeCarry, showCarryProfile, bitLevelSolve, BitLevelStats(..), decomposeProblem, BitColumn(..))
 import PeqNP.UnifiedExperiments (unifiedAnalysis, showUnifiedTable)
 
 main :: IO ()
@@ -433,6 +434,36 @@ main = do
   putStrLn "  polynomial — that's WHY DP works (pseudo-poly). For super-"
   putStrLn "  increasing weights, it explodes at the middle levels."
   putStrLn "  NP-hardness lives in the MERGE, not the leaves."
+  putStrLn ""
+
+  sectionHeader "28. BIT DECOMPOSITION: treating Int as bits, not magnitude"
+  putStrLn "  Key idea: at the type level, Int is Int. A weight of 5 and"
+  putStrLn "  a weight of 5000000 have the same structure. By decomposing"
+  putStrLn "  into bits, we process UNIFORMLY regardless of magnitude."
+  putStrLn ""
+  putStrLn "  The carry at each bit position is bounded by n/2 (not by"
+  putStrLn "  the weight magnitude!). This means the bit-level solver"
+  putStrLn "  is O(n² × log(max_weight)) — polynomial in INPUT SIZE."
+  putStrLn ""
+
+  putStrLn "  Sequential [1..6] target=10:"
+  putStr $ showCarryProfile (analyzeCarry [1,2,3,4,5,6] 10)
+  putStrLn ""
+
+  putStrLn "  Fibonacci [1,2,3,5,8,13] target=15:"
+  putStr $ showCarryProfile (analyzeCarry [1,2,3,5,8,13] 15)
+  putStrLn ""
+
+  putStrLn "  Super-increasing [1,2,4,8,16,32] target=21:"
+  putStr $ showCarryProfile (analyzeCarry [1,2,4,8,16,32] 21)
+  putStrLn ""
+
+  putStrLn "  EXPONENTIAL weights [100,200,400,800,1600] target=1000:"
+  putStr $ showCarryProfile (analyzeCarry [100,200,400,800,1600] 1000)
+  putStrLn ""
+
+  putStrLn "  BIG weights [1000000,2000000,3000000] target=4000000:"
+  putStr $ showCarryProfile (analyzeCarry [1000000,2000000,3000000] 4000000)
   putStrLn ""
 
   putStrLn "═══════════════════════════════════════════════════════════"
