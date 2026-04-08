@@ -7,6 +7,7 @@ module PeqNP.MultiLevelSieve
   , multiLevelRepSolve
   , fourWayRepSolve
   , repFourWaySolve
+  , recursiveRepSolve
     -- * Pruned group sieve (inner level)
   , prunedGroupSums
     -- * Benchmarking
@@ -472,6 +473,75 @@ repFourWaySolve modRep weights target =
                 stepW = Set.size leftSums + Set.size rightSums
             in if hit then (True, w + stepW)
                else go (r + 1) (w + stepW)
+      dpAnswer = Set.member target (bruteForceDP weights)
+      innerWork = Set.size s1 + Set.size s2 + Set.size s3 + Set.size s4
+  in SR found (found == dpAnswer) (innerWork + work) 2 0 0
+
+-- | RECURSIVE representations: 2-level modular filtering.
+-- Level 1 (inner): for each r1 mod M1, filter Q1+Q2 merge
+-- Level 2 (outer): for filtered leftSums, check against rightSums
+-- Key: don't iterate ALL r1. For each a ∈ S1, a's residue DETERMINES r1.
+-- So we process S1 once, bucketing results by r1 = (a mod M1).
+-- Then for each r1-bucket, merge with S2 filtered for that r1.
+-- This gives O(|S1| × |S2|/M1) total inner work.
+recursiveRepSolve :: Int -> [Int] -> Int -> SolveResult
+recursiveRepSolve m1 weights target =
+  let n = length weights
+      q = n `div` 4
+      (q1, rest1) = splitAt q weights
+      (q2, rest2) = splitAt q rest1
+      (q3, q4)    = splitAt q rest2
+      s1 = bruteForceDP q1; s2 = bruteForceDP q2
+      s3 = bruteForceDP q3; s4 = bruteForceDP q4
+      -- Bucket S2 and S4 by residue mod M1
+      b2 = Map.fromListWith (++) [(s `mod` m1, [s]) | s <- Set.toList s2]
+      b4 = Map.fromListWith (++) [(s `mod` m1, [s]) | s <- Set.toList s4]
+      tMod = target `mod` m1
+      -- For each a ∈ S1: r1 = (a + b) mod M1 is determined by which bucket of S2 we pick.
+      -- We want leftSum = a + b where leftSum ≡ ANY r1, and rightSum ≡ (T-r1) mod M1.
+      -- Process: for each a, for each b in matching bucket, produce leftSum.
+      -- Then check if (T - leftSum) is achievable from S3+S4 with right residue.
+      --
+      -- EFFICIENT: build Map from leftSum → () for ALL valid (a,b) combos.
+      -- Then for each leftSum, check rightSum = T - leftSum in right sums.
+      -- Right sums: same construction from S3, S4 with matching residue.
+      --
+      -- But which residue? leftSum mod M1 = r1 → rightSum mod M1 = (T - r1) mod M1.
+      -- Since r1 varies with each leftSum, right sums need all residues too.
+      -- Solution: precompute ALL right sums (like MITM), but ONLY keep those
+      -- where the residue matches some possible left residue.
+      -- Actually: just build the full right set and check. The modular filter
+      -- reduces the INNER merge work, not the outer check.
+      --
+      -- SIMPLIFIED: for each r1 = 0..M1-1:
+      --   leftSums(r1) = {a+b | a ∈ S1, b ∈ S2, (a+b) mod M1 = r1}
+      --                = {a+b | a ∈ S1, b ∈ bucket((r1-a) mod M1) of S2}
+      --   rightSums(r1) = {c+d | c ∈ S3, d ∈ bucket(((T-r1)-c) mod M1) of S4}
+      --   Check: any l ∈ leftSums(r1) where (T-l) ∈ rightSums(r1)?
+      --
+      -- Work per r1: |S1| × |bucket_S2| + |S3| × |bucket_S4| + min(|L|,|R|) × log(max(|L|,|R|))
+      -- |bucket| ≈ |S|/M1. With M1 r1's: total = M1 × (|S1|×|S2|/M1 + ...) = |S1|×|S2| + ...
+      -- Same total BUT: we can STOP at the first r1 that finds a match!
+      -- For YES instances: expected to find match at r1 ≈ 1 (if many representations)
+
+      (found, work) = goR 0 0
+      goR r w | r >= m1 = (False, w)
+      goR r w =
+        let leftR = Set.fromList
+              [ a + b
+              | a <- Set.toList s1
+              , b <- Map.findWithDefault [] ((r - a `mod` m1) `mod` m1) b2
+              ]
+            rRight = (tMod - r) `mod` m1
+            rightR = Set.fromList
+              [ c + d
+              | c <- Set.toList s3
+              , d <- Map.findWithDefault [] ((rRight - c `mod` m1) `mod` m1) b4
+              ]
+            hit = any (\l -> Set.member (target - l) rightR) (Set.toList leftR)
+            stepW = Set.size leftR + Set.size rightR
+        in if hit then (True, w + stepW)
+           else goR (r + 1) (w + stepW)
       dpAnswer = Set.member target (bruteForceDP weights)
       innerWork = Set.size s1 + Set.size s2 + Set.size s3 + Set.size s4
   in SR found (found == dpAnswer) (innerWork + work) 2 0 0
