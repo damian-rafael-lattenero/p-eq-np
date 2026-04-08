@@ -314,13 +314,14 @@ fourWayRepSolve m1 m2 weights target =
       b2 = pickBestBits q2 target
       b3 = pickBestBits q3 target
       b4 = pickBestBits q4 target
-      (s1, w1) = prunedGroupSums q1 target b1
-      (s2, w2) = prunedGroupSums q2 target b2
-      (s3, w3) = prunedGroupSums q3 target b3
-      (s4, w4) = prunedGroupSums q4 target b4
+      -- Use bruteForceDP for quarters (they're small: n/4 elements)
+      s1 = bruteForceDP q1; w1 = Set.size s1
+      s2 = bruteForceDP q2; w2 = Set.size s2
+      s3 = bruteForceDP q3; w3 = Set.size s3
+      s4 = bruteForceDP q4; w4 = Set.size s4
       -- Inner merge with mod M1: combine Q1+Q2 and Q3+Q4
-      leftSums = filteredMerge s1 s2 target m1
-      rightSums = filteredMerge s3 s4 target m2
+      leftSums = filteredMerge s1 s2 (sum q1 + sum q2) m1
+      rightSums = filteredMerge s3 s4 (sum q3 + sum q4) m2
       -- Outer merge
       found = any (\l -> Set.member (target - l) rightSums) (Set.toList leftSums)
       dpAnswer = Set.member target (bruteForceDP weights)
@@ -329,23 +330,16 @@ fourWayRepSolve m1 m2 weights target =
       totalWork = innerWork + mergeWork
   in SR found (found == dpAnswer) totalWork 2 (Set.size leftSums) (Set.size rightSums)
 
--- | HASH-BASED filtered merge: O(|A| × |bucket|) instead of O(|A| × |B|).
--- For each a ∈ A: we need b such that a+b ≤ upperBound AND
--- (a+b) mod M = target mod M. So b must be in the bucket
--- where b mod M = (target - a) mod M.
--- Each bucket has |B|/M elements on average → total O(|A| × |B|/M).
+-- | Range-filtered merge: combine sums from two sets, keep only those in range.
+-- Uses a Set for B so lookup for the final target-check is O(log n).
+-- For intermediate merges: produce ALL sums a+b in [0, upperBound].
 filteredMerge :: Set.Set Int -> Set.Set Int -> Int -> Int -> Set.Set Int
-filteredMerge setA setB upperBound modulus =
-  let targetMod = upperBound `mod` modulus
-      -- Bucket B by residue mod M
-      bBuckets = Map.fromListWith (++) [(s `mod` modulus, [s]) | s <- Set.toList setB]
-      -- For each a: look up ONLY the matching bucket
-  in Set.fromList
-       [ a + b
-       | a <- Set.toList setA
-       , let needed = (targetMod - a `mod` modulus) `mod` modulus
-             bucket = Map.findWithDefault [] needed bBuckets
-       , b <- bucket
-       , a + b >= 0
-       , a + b <= upperBound
-       ]
+filteredMerge setA setB upperBound _modulus =
+  Set.fromList
+    [ a + b
+    | a <- Set.toList setA
+    , b <- Set.toList setB
+    , let s = a + b
+    , s >= 0
+    , s <= upperBound
+    ]
