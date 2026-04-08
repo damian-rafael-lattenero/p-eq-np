@@ -58,6 +58,16 @@ library
   default-language:  GHC2024
   ghc-options:       -Wall -Wcompat
 
+executable verify-correctness
+  main-is:          VerifyCorrectness.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    containers >= 0.7,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2
+
 executable bench-sieve
   main-is:          BenchSieve.hs
   build-depends:
