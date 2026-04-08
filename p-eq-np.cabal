@@ -28,6 +28,10 @@ library
     PeqNP.VariableOrdering
     PeqNP.Adjunction
     PeqNP.CategoryExperiments
+    PeqNP.Polynomial
+    PeqNP.PolyEnriched
+    PeqNP.PolyQuotient
+    PeqNP.NTT
   build-depends:
     base >= 4.21 && < 5,
     containers >= 0.7

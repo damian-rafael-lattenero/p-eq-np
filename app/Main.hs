@@ -16,6 +16,9 @@ import PeqNP.ReachMonad (buildReachTree, showReachTree, distinctStatesPerLevel, 
 import PeqNP.MyhillNerode (mnClassify, MNResult(..))
 import PeqNP.VariableOrdering (naturalOrder, sortedAsc, sortedDesc, greedyMinStates, showOrderingResult)
 import PeqNP.CategoryExperiments (showComparisonTable)
+import PeqNP.Polynomial (expand, ProductForm(..), showPoly, nonzeroTerms, hasCoeff)
+import PeqNP.PolyQuotient (buildProductMod, polyModHasCoeff, polyModCoeffAt, polyScaling, PolyScalingPoint(..))
+import PeqNP.NTT (evalProductAt, nttCoeffAt)
 
 main :: IO ()
 main = do
@@ -223,11 +226,70 @@ main = do
   putStr $ showComparisonTable [1,2,3,5,8] 20
   putStrLn ""
 
+  -- Phase G: Polynomial enrichment
+  sectionHeader "14. Generating function: O(n) encoding of 2^n sums"
+  let gfElems = [3, 7, 5, 2]
+  putStrLn $ "  g(x) = Π(1 + x^wᵢ) for " ++ show gfElems
+  let fullPoly = expand (PF gfElems)
+  putStrLn $ "  Expanded: " ++ showPoly fullPoly
+  putStrLn $ "  Nonzero terms: " ++ show (nonzeroTerms fullPoly) ++ " (out of 2^4 = 16 possible)"
+  putStrLn $ "  [x^10] = " ++ show (hasCoeff 10 fullPoly) ++ " (target 10 reachable!)"
+  putStrLn $ "  [x^11] = " ++ show (hasCoeff 11 fullPoly) ++ " (target 11 not reachable)"
+  putStrLn ""
+
+  sectionHeader "15. Polynomial quotient Z[x]/(x^q - 1)"
+  putStrLn "  Quotienting wraps x^k → x^(k mod q). Smaller q = more compression."
+  putStrLn "  For NO instance: [3,7,5,2] target=11"
+  putStrLn ""
+  let noE = [3,7,5,2]
+      noT = 11
+  mapM_ (\q -> do
+    let pm = buildProductMod q noE
+        fp = polyModHasCoeff noT pm
+        c  = polyModCoeffAt noT pm
+    putStrLn $ "  q=" ++ padRight 4 (show q)
+            ++ " [x^" ++ show noT ++ " mod " ++ show q ++ "]=" ++ padRight 4 (show c)
+            ++ " false positive: " ++ show fp
+    ) [3, 5, 7, 11, 13, 17]
+  putStrLn ""
+
+  sectionHeader "16. Poly quotient vs ZMod k: scaling comparison"
+  let scalingInstances =
+        [ ([1, 2], 4)
+        , ([1, 2, 3], 7)
+        , ([1, 2, 3, 5], 12)
+        , ([1, 2, 3, 5, 8], 20)
+        , ([1, 2, 3, 5, 8, 13], 33)
+        , ([1, 2, 3, 5, 8, 13, 21], 54)
+        ]
+  let pScaling = polyScaling scalingInstances 200
+  putStrLn "  n    target  min_q (poly)  min_k (ZMod)"
+  putStrLn $ "  " ++ replicate 45 '-'
+  mapM_ (\p -> putStrLn $ "  " ++ padRight 5 (show (pspN p))
+                        ++ padRight 8 (show (pspTarget p))
+                        ++ padRight 14 (maybe "N/A" show (pspMinQ p))
+                        ++ maybe "N/A" show (pspMinK p)
+    ) pScaling
+  putStrLn ""
+
+  -- NTT demo
+  sectionHeader "17. NTT: O(n) evaluation at roots of unity"
+  putStrLn "  Evaluating g(x) = Π(1+x^wᵢ) at point α mod p takes O(n)!"
+  putStrLn $ "  g(2) mod 97 = " ++ show (evalProductAt 97 2 gfElems)
+  putStrLn $ "  g(3) mod 97 = " ++ show (evalProductAt 97 3 gfElems)
+  case nttCoeffAt 97 8 10 gfElems of
+    Just c  -> putStrLn $ "  NTT: [x^10] g(x) mod 97 = " ++ show c ++ " (should be > 0)"
+    Nothing -> putStrLn "  NTT: no 8th root of unity mod 97"
+  case nttCoeffAt 97 8 11 gfElems of
+    Just c  -> putStrLn $ "  NTT: [x^11] g(x) mod 97 = " ++ show c ++ " (should be 0 if q big enough)"
+    Nothing -> putStrLn "  NTT: no 8th root of unity mod 97"
+  putStrLn ""
+
   putStrLn "═══════════════════════════════════════════════════════════"
-  putStrLn " CONCLUSION: All constructions show exponential growth"
-  putStrLn " for instances with exponential distinct sums."
-  putStrLn " The pigeonhole argument is fundamental and transcends"
-  putStrLn " any specific monoid or categorical construction."
+  putStrLn " The generating function approach enriches over Z[x]"
+  putStrLn " instead of Z. The quotient Z[x]/(x^q-1) compresses"
+  putStrLn " using multiplicative structure, not just additive."
+  putStrLn " If min_q < min_k for hard instances, polynomials WIN."
   putStrLn "═══════════════════════════════════════════════════════════"
 
 sectionHeader :: String -> IO ()

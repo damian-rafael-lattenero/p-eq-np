@@ -21,6 +21,9 @@ import PeqNP.DPSolver (dpReachable)
 import PeqNP.ReachMonad (buildReachTree, totalDistinctStates, distinctStatesPerLevel, reachSetOf)
 import PeqNP.MyhillNerode (mnClassify, MNResult(..), mnClassesPerLevel)
 import PeqNP.VariableOrdering (naturalOrder, sortedAsc, greedyMinStates, OrderingResult(..))
+import PeqNP.Polynomial (Poly, polyOne, includeFactor, coeffAt, hasCoeff, expand, ProductForm(..), polyMul)
+import PeqNP.PolyQuotient (buildProductMod, polyModHasCoeff, minPreservingQ)
+import PeqNP.NTT (evalProductAt)
 
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -44,6 +47,7 @@ tests = testGroup "P=NP Enriched Category"
   , reachMonadTests
   , myhillNerodeTests
   , variableOrderingTests
+  , polynomialTests
   ]
 
 -- ═══════════════════════════════════════════════════════════
@@ -418,6 +422,55 @@ variableOrderingTests = testGroup "Variable ordering"
       forAll smallList $ \xs ->
         let finalStates = last (orStatesPerLevel (naturalOrder xs))
         in finalStates === Set.size (dpReachable xs)
+  ]
+
+-- ═══════════════════════════════════════════════════════════
+-- Group 13: Polynomial enrichment
+-- ═══════════════════════════════════════════════════════════
+
+polynomialTests :: TestTree
+polynomialTests = testGroup "Polynomial enrichment"
+  [ testProperty "expand matches brute-force reachable sums" $
+      forAll smallList $ \xs ->
+        let poly = expand (PF xs)
+            reachable = dpReachable xs
+        in Set.fromList [e | e <- [0..sum xs], hasCoeff e poly]
+           === reachable
+
+  , testProperty "polyMul is associative" $
+      \(Positive a, Positive b, Positive c) ->
+        let pa = includeFactor a
+            pb = includeFactor b
+            pc = includeFactor c
+        in (pa <> pb) <> pc === pa <> (pb <> pc)
+
+  , testProperty "polyOne is identity" $
+      \(Positive a) ->
+        let pa = includeFactor a
+        in (polyOne <> pa === pa) .&&. (pa <> polyOne === pa)
+
+  , testProperty "coeffAt T in expand matches hasCoeff" $
+      forAll genSmallSubsetSumInstance $ \(xs, target) ->
+        let poly = expand (PF xs)
+        in (coeffAt target poly > 0) === hasCoeff target poly
+
+  , testProperty "quotient with q > max_sum preserves answer" $
+      forAll genSmallSubsetSumInstance $ \(xs, target) ->
+        not (null xs) ==>
+          let maxS = sum xs + 1
+              pm = buildProductMod maxS xs
+              poly = expand (PF xs)
+          in polyModHasCoeff target pm === hasCoeff target poly
+
+  , testProperty "evalProductAt: g(1) mod p = 2^n mod p" $
+      forAll smallList $ \xs ->
+        not (null xs) ==>
+          let p = 97  -- prime
+              g1 = evalProductAt p 1 xs
+          in g1 === ((2 ^ length xs) `mod` p)
+
+  , testProperty "[3,7,5,2] target 11: min q = 5" $
+      minPreservingQ [3,7,5,2] 11 100 === Just 5
   ]
 
 -- ═══════════════════════════════════════════════════════════
