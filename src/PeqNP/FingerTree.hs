@@ -13,7 +13,18 @@ module PeqNP.FingerTree
   , fingerTreeSolve
   , FTStats(..)
   , showFTStats
+    -- * TargetAware monoid (the "perfect" annotation)
+  , TargetAware(..)
+  , taFromElement
+  , taMerge
+  , taCanReach
+  , DifficultyProfile(..)
+  , measureDifficulty
+  , showDifficultyProfile
   ) where
+
+import qualified Data.Set as Set
+import Data.Set (Set)
 
 -- | Monoidal annotations for subset sum finger trees.
 --
@@ -178,3 +189,112 @@ showFTStats fts = unlines
   , "  Explored: " ++ show (ftsExplored fts) ++ " / " ++ show (ftsTotal fts)
       ++ " (" ++ show (ftsPruned fts) ++ " pruned)"
   ]
+
+-- ═══════════════════════════════════════════════════════════
+-- TargetAware monoid: the "perfect" annotation
+-- ═══════════════════════════════════════════════════════════
+
+-- | The complete set of achievable subset sums for a group of elements.
+--
+-- This IS the perfect monoid annotation: it answers "is target reachable?"
+-- in O(log n) via Set.member. The catch: the SET ITSELF can be exponential.
+--
+-- The key experiment: at which level of the tree does |TA| explode?
+-- That level is where NP-hardness "appears".
+newtype TargetAware = TA { taReachable :: Set Int }
+  deriving (Show, Eq)
+
+-- | The <> operation: SUMSET.
+-- Given reachable sums A and B, the combined reachable sums = {a+b | a∈A, b∈B}.
+-- This is where the explosion happens: |A+B| can be up to |A|*|B|.
+taMerge :: TargetAware -> TargetAware -> TargetAware
+taMerge (TA a) (TA b) = TA $ Set.fromList
+  [x + y | x <- Set.toList a, y <- Set.toList b]
+
+-- | Create TargetAware for a single element: {0, w}
+taFromElement :: Int -> TargetAware
+taFromElement w = TA (Set.fromList [0, w])
+
+-- | Check if target is reachable: O(log |TA|)
+taCanReach :: Int -> TargetAware -> Bool
+taCanReach t (TA s) = Set.member t s
+
+-- ═══════════════════════════════════════════════════════════
+-- Difficulty profiling: WHERE does NP-hardness appear?
+-- ═══════════════════════════════════════════════════════════
+
+-- | Profile of how the TargetAware annotation grows at each level.
+data DifficultyProfile = DP
+  { dpElements     :: [Int]
+  , dpLevelSizes   :: [(Int, Int, Int)]  -- (level, numNodes, maxAnnotationSize)
+  , dpExplosionLevel :: Maybe Int         -- first level where max size > poly threshold
+  } deriving (Show)
+
+-- | Build the tree bottom-up, measuring TargetAware size at each level.
+--
+-- THIS IS THE KEY EXPERIMENT:
+-- Level 0 (leaves): TA size = 2 (always)
+-- Level 1: TA size ≤ 4
+-- Level k: TA size ≤ 2^(2^k) worst case
+-- At which k does it exceed n^2? That's where NP-hardness "appears".
+measureDifficulty :: [Int] -> DifficultyProfile
+measureDifficulty elems =
+  let leaves = map taFromElement elems
+      profile = buildProfile 0 leaves []
+      threshold = length elems ^ (2 :: Int)  -- poly(n) = n²
+      explosion = findExplosion threshold profile
+  in DP elems profile explosion
+  where
+    buildProfile :: Int -> [TargetAware] -> [(Int, Int, Int)] -> [(Int, Int, Int)]
+    buildProfile level nodes acc
+      | length nodes <= 1 =
+          let sizes = map (Set.size . taReachable) nodes
+              maxSize = if null sizes then 0 else maximum sizes
+          in reverse ((level, length nodes, maxSize) : acc)
+      | otherwise =
+          let sizes = map (Set.size . taReachable) nodes
+              maxSize = if null sizes then 0 else maximum sizes
+              acc' = (level, length nodes, maxSize) : acc
+              -- Merge pairs for next level
+              nextLevel = mergePairs nodes
+          in buildProfile (level + 1) nextLevel acc'
+
+    mergePairs :: [TargetAware] -> [TargetAware]
+    mergePairs [] = []
+    mergePairs [x] = [x]
+    mergePairs (x:y:rest) = taMerge x y : mergePairs rest
+
+    findExplosion :: Int -> [(Int, Int, Int)] -> Maybe Int
+    findExplosion threshold profile =
+      case filter (\(_, _, sz) -> sz > threshold) profile of
+        ((lvl, _, _):_) -> Just lvl
+        []              -> Nothing
+
+showDifficultyProfile :: DifficultyProfile -> String
+showDifficultyProfile dp = unlines $
+  [ "  Elements: " ++ show (dpElements dp)
+  , "  Poly threshold (n²): " ++ show (length (dpElements dp) ^ (2 :: Int))
+  , ""
+  , "  " ++ padR' 8 "Level" ++ padR' 8 "Nodes" ++ padR' 12 "Max |TA|" ++ "Status"
+  , "  " ++ replicate 45 '-'
+  ] ++
+  [ "  " ++ padR' 8 (show lvl)
+    ++ padR' 8 (show nodes)
+    ++ padR' 12 (show sz)
+    ++ status sz
+  | (lvl, nodes, sz) <- dpLevelSizes dp
+  ] ++
+  [ ""
+  , "  Explosion level: " ++ case dpExplosionLevel dp of
+      Nothing -> "NONE (stays polynomial!)"
+      Just l  -> show l ++ " ← NP-hardness appears here"
+  ]
+  where
+    threshold = length (dpElements dp) ^ (2 :: Int)
+    status sz
+      | sz <= threshold = "poly"
+      | sz <= 1000      = "GROWING"
+      | otherwise       = "EXPLODED"
+
+padR' :: Int -> String -> String
+padR' n s = s ++ replicate (max 0 (n - length s)) ' '

@@ -25,7 +25,7 @@ import PeqNP.Landscape (buildLandscape, showLandscape, showHistogram, ProbLandsc
 import PeqNP.LazyTree (searchWithStats, showPruneStats)
 import PeqNP.Streaming (streamingSolve, showStreamStats)
 import PeqNP.Diagonal (diagonalExperiment, showDiagonalResults, greedyLargest, greedySmallest, alwaysInclude, alwaysSkip, thresholdHalf, alternating)
-import PeqNP.FingerTree (fingerTreeSolve, showFTStats)
+import PeqNP.FingerTree (fingerTreeSolve, showFTStats, measureDifficulty, showDifficultyProfile)
 import PeqNP.UnifiedExperiments (unifiedAnalysis, showUnifiedTable)
 
 main :: IO ()
@@ -409,6 +409,30 @@ main = do
         , ([1, 2, 3, 5, 8, 13], 33)    -- n=6, NO
         ]
   putStr $ showUnifiedTable (unifiedAnalysis unifiedInstances)
+  putStrLn ""
+
+  sectionHeader "27. WHERE does NP-hardness appear? (TargetAware monoid)"
+  putStrLn "  The perfect monoid tracks ALL reachable sums (Set Int)."
+  putStrLn "  <> = sumset: {a+b | a in left, b in right}."
+  putStrLn "  At which tree level does the set size EXPLODE past n²?"
+  putStrLn ""
+
+  putStrLn "  Sequential weights [1..6] (dense sums, polynomial growth):"
+  putStr $ showDifficultyProfile (measureDifficulty [1,2,3,4,5,6])
+  putStrLn ""
+
+  putStrLn "  Fibonacci weights (exponential distinct sums):"
+  putStr $ showDifficultyProfile (measureDifficulty [1,2,3,5,8,13])
+  putStrLn ""
+
+  putStrLn "  Super-increasing [1,2,4,8,16,32] (worst case: 2^n sums):"
+  putStr $ showDifficultyProfile (measureDifficulty [1,2,4,8,16,32])
+  putStrLn ""
+
+  putStrLn "  KEY INSIGHT: for sequential weights, the annotation stays"
+  putStrLn "  polynomial — that's WHY DP works (pseudo-poly). For super-"
+  putStrLn "  increasing weights, it explodes at the middle levels."
+  putStrLn "  NP-hardness lives in the MERGE, not the leaves."
   putStrLn ""
 
   putStrLn "═══════════════════════════════════════════════════════════"
