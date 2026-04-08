@@ -333,40 +333,53 @@ solveRep levels modRep weights target =
       mergeWork = Set.size leftSums  -- conservative estimate
   in (found, leftWork + rightWork + mergeWork)
 
--- | 4-way split with representations at BOTH levels.
--- Split into 4 quarters. Inner merge: Q1+Q2 and Q3+Q4 with mod M1.
--- Outer merge: (Q1+Q2) + (Q3+Q4) with mod M2.
--- Total: 4 × 2^{n/4} inner + filtered merges.
+-- | 4-way split with RANGE PROPAGATION + fused prune.
+-- Target ranges propagate DOWN so pruning happens BEFORE growth.
+--
+-- Outer: leftSum ∈ [T-maxR, min(T, maxL)], rightSum = T - leftSum
+-- Inner: for each s1 ∈ S1, only keep s2 ∈ S2 where s1+s2 ∈ [leftLo, leftHi]
+-- This is a STREAMING merge: enumerate S1, prune S2 for each s1.
 fourWayRepSolve :: Int -> Int -> [Int] -> Int -> SolveResult
-fourWayRepSolve m1 m2 weights target =
+fourWayRepSolve _m1 _m2 weights target =
   let n = length weights
       q = n `div` 4
       (q1, rest1) = splitAt q weights
       (q2, rest2) = splitAt q rest1
       (q3, q4)    = splitAt q rest2
-      -- Inner: enumerate sums of each quarter
-      b1 = pickBestBits q1 target
-      b2 = pickBestBits q2 target
-      b3 = pickBestBits q3 target
-      b4 = pickBestBits q4 target
-      -- Per quarter: enumerate ALL sums using group sieve (upper-only pruning)
+      -- Target ranges for each half
+      maxL = sum q1 + sum q2
+      maxR = sum q3 + sum q4
+      leftLo = max 0 (target - maxR)
+      leftHi = min target maxL
+      rightLo = max 0 (target - maxL)
+      rightHi = min target maxR
+      -- Per quarter: enumerate sums with group sieve
+      b1 = pickBestBits q1 target; b2 = pickBestBits q2 target
+      b3 = pickBestBits q3 target; b4 = pickBestBits q4 target
       (s1, w1) = allGroupSums q1 b1
       (s2, w2) = allGroupSums q2 b2
       (s3, w3) = allGroupSums q3 b3
       (s4, w4) = allGroupSums q4 b4
-      -- Inner merge with mod M1: combine Q1+Q2 and Q3+Q4
-      -- RANGE-BOUNDED merge: only produce sums useful for hitting target
-      maxRight = sum q3 + sum q4
-      maxLeft = sum q1 + sum q2
-      -- leftSum must be in [target - maxRight, target] (so rightSum can fill the gap)
-      -- rightSum must be in [target - maxLeft, target]
-      leftSums = filteredMergeRange s1 s2 (max 0 (target - maxRight)) (min target maxLeft)
-      rightSums = filteredMergeRange s3 s4 (max 0 (target - maxLeft)) (min target maxRight)
-      -- Outer merge: for each left, check if target-left is in right
+      -- FUSED merge+prune: enumerate S1, for each s1 only get matching S2
+      leftSums = Set.fromList
+        [ a + b | a <- Set.toList s1
+        , let bLo = max 0 (leftLo - a)
+              bHi = leftHi - a
+        , bHi >= bLo
+        , b <- Set.toAscList (filterRange bLo bHi s2)
+        ]
+      rightSums = Set.fromList
+        [ a + b | a <- Set.toList s3
+        , let bLo = max 0 (rightLo - a)
+              bHi = rightHi - a
+        , bHi >= bLo
+        , b <- Set.toAscList (filterRange bLo bHi s4)
+        ]
+      -- Final check
       found = any (\l -> Set.member (target - l) rightSums) (Set.toList leftSums)
       dpAnswer = Set.member target (bruteForceDP weights)
       innerWork = w1 + w2 + w3 + w4
-      mergeWork = Set.size s1 + Set.size s3 + Set.size leftSums
+      mergeWork = Set.size leftSums + Set.size rightSums
       totalWork = innerWork + mergeWork
   in SR found (found == dpAnswer) totalWork 2 (Set.size leftSums) (Set.size rightSums)
 
