@@ -687,6 +687,45 @@ main = do
   putStrLn "  If ratio shrinks → corrections grow FASTER (bad)"
   putStrLn ""
 
+  sectionHeader "38. COMPOUNDING? Per-level correction sizes"
+  putStrLn "  For complexity class change, each level must REDUCE corrections"
+  putStrLn "  by a multiplicative factor (not just the first level)."
+  putStrLn ""
+
+  let detailedTests =
+        [ ([3,5,7], 6)
+        , ([1,2,3,5,8,13], 15)
+        , ([3,5,6,7,9,10,11], 20)
+        , ([3,5,6,7,9,10,11,13,14,15], 48)
+        , ([3,5,7,9,11,13,15,17], 40)
+        , ([1,2,3,5,8,13,21,34], 44)
+        , ([3,5,6,7,9,10,11,12,13,14,15], 55)
+        ]
+
+  mapM_ (\(ws, t) -> do
+    let rr = recursiveGF2Solve ws t
+    putStrLn $ "  n=" ++ show (length ws) ++ " " ++ show ws ++ " t=" ++ show t
+    putStrLn $ "    DP sums: " ++ show (rrDPSize rr)
+    putStrLn $ "    Corrections/level: " ++ show (rrCorrectionSizes rr)
+    putStrLn $ "    Weights/level:"
+    mapM_ (\(i, ws') ->
+      putStrLn $ "      L" ++ show i ++ ": "
+              ++ show (filter (/= 0) ws')
+              ++ " (" ++ show (length (filter (/= 0) ws')) ++ " non-zero)"
+      ) (zip [(0::Int)..] (rrWeightsPerLevel rr))
+    -- Check compounding: does each level reduce by a factor?
+    let sizes = rrCorrectionSizes rr
+        ratios = zipWith (\a b -> if b > 0 then fromIntegral a / fromIntegral b else 0 :: Double)
+                         sizes (tail sizes)
+    putStrLn $ "    Level-to-level ratios: " ++ show (map (\r -> fromIntegral (round (r * 10) :: Int) / 10) ratios)
+    putStrLn $ "    " ++ if all (> 1.5) ratios && length ratios > 1
+                         then "COMPOUNDING! Each level reduces corrections."
+                         else if any (> 1.5) ratios
+                         then "Partial compounding (some levels reduce)."
+                         else "No compounding — same rate."
+    putStrLn ""
+    ) detailedTests
+
   putStrLn "═══════════════════════════════════════════════════════════"
   putStrLn " PROJECT SUMMARY (Phases A-I)"
   putStrLn " A-C: Enriched categories, BF, DP, SAT connection"
