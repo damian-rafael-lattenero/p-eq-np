@@ -32,6 +32,9 @@ library
     PeqNP.PolyEnriched
     PeqNP.PolyQuotient
     PeqNP.NTT
+    PeqNP.Relaxation
+    PeqNP.Rounding
+    PeqNP.Landscape
   build-depends:
     base >= 4.21 && < 5,
     containers >= 0.7

@@ -19,6 +19,9 @@ import PeqNP.CategoryExperiments (showComparisonTable)
 import PeqNP.Polynomial (expand, ProductForm(..), showPoly, nonzeroTerms, hasCoeff)
 import PeqNP.PolyQuotient (buildProductMod, polyModHasCoeff, polyModCoeffAt, polyScaling, PolyScalingPoint(..))
 import PeqNP.NTT (evalProductAt, nttCoeffAt)
+import PeqNP.Relaxation (solveRelaxed, showRelaxed, RelaxedSolution(..))
+import PeqNP.Rounding (probabilisticSolve, showStats)
+import PeqNP.Landscape (buildLandscape, showLandscape, showHistogram, ProbLandscape(..))
 
 main :: IO ()
 main = do
@@ -291,6 +294,66 @@ main = do
   putStrLn " using multiplicative structure, not just additive."
   putStrLn " If min_q < min_k for hard instances, polynomials WIN."
   putStrLn "═══════════════════════════════════════════════════════════"
+  putStrLn ""
+
+  -- Phase H: Probabilistic approach
+  sectionHeader "18. LP relaxation: continuous [0,1] solution"
+  let lpElems = [3, 7, 5, 2]
+  putStr $ showRelaxed (solveRelaxed lpElems 10)
+  putStrLn ""
+  putStr $ showRelaxed (solveRelaxed [1,2,3,5,8,13] 15)
+  putStrLn ""
+
+  sectionHeader "19. Probabilistic solver (randomized rounding)"
+  putStrLn "  [3,7,5,2] target=10:"
+  let stats1 = probabilisticSolve 100 10 lpElems 10
+  putStr $ showStats stats1
+  putStrLn ""
+  putStrLn "  [1,2,3,5,8,13] target=15:"
+  let stats2 = probabilisticSolve 100 10 [1,2,3,5,8,13] 15
+  putStr $ showStats stats2
+  putStrLn ""
+
+  sectionHeader "20. Probability landscape"
+  let landscape = buildLandscape 1000 lpElems 10
+  putStr $ showLandscape landscape
+  putStrLn ""
+  putStrLn "  Sum distribution (histogram):"
+  putStr $ showHistogram landscape
+  putStrLn ""
+
+  sectionHeader "21. Scaling: P(hit) vs n"
+  putStrLn "  How does target probability scale with instance size?"
+  putStrLn ""
+  let scalingInsts =
+        [ ([3, 7], 10)
+        , ([3, 7, 5], 10)
+        , ([3, 7, 5, 2], 10)
+        , ([1, 2, 3, 5, 8], 10)
+        , ([1, 2, 3, 5, 8, 13], 10)
+        , ([1, 2, 3, 5, 8, 13, 21], 10)
+        ]
+  putStrLn $ "  " ++ padRight 5 "n" ++ padRight 10 "P(hit)" ++ "E[trials]"
+  putStrLn $ "  " ++ replicate 30 '-'
+  mapM_ (\(es, t) -> do
+    let l = buildLandscape 10000 es t
+    putStrLn $ "  " ++ padRight 5 (show (length es))
+            ++ padRight 10 (show (roundTo' 4 (plTargetProb l)))
+            ++ (if plTargetProb l > 0
+                then show (round (plExpectedTrials l) :: Int)
+                else "Inf")
+    ) scalingInsts
+  putStrLn ""
+
+  putStrLn "═══════════════════════════════════════════════════════════"
+  putStrLn " The probabilistic approach trades exactness for speed."
+  putStrLn " P(hit) determines whether randomized rounding gives a"
+  putStrLn " polynomial-time algorithm. If P(hit) >= 1/poly(n) for"
+  putStrLn " all YES instances → Subset Sum in BPP → likely P = NP."
+  putStrLn "═══════════════════════════════════════════════════════════"
+
+roundTo' :: Int -> Double -> Double
+roundTo' n x = fromIntegral (round (x * 10^n) :: Int) / 10^n
 
 sectionHeader :: String -> IO ()
 sectionHeader title = do

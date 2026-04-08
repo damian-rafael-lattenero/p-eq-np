@@ -24,6 +24,8 @@ import PeqNP.VariableOrdering (naturalOrder, sortedAsc, greedyMinStates, Orderin
 import PeqNP.Polynomial (Poly, polyOne, includeFactor, coeffAt, hasCoeff, expand, ProductForm(..), polyMul)
 import PeqNP.PolyQuotient (buildProductMod, polyModHasCoeff, minPreservingQ)
 import PeqNP.NTT (evalProductAt)
+import PeqNP.Relaxation (solveRelaxed, RelaxedSolution(..))
+import PeqNP.Landscape (buildLandscape, ProbLandscape(..))
 
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -48,6 +50,7 @@ tests = testGroup "P=NP Enriched Category"
   , myhillNerodeTests
   , variableOrderingTests
   , polynomialTests
+  , probabilisticTests
   ]
 
 -- ═══════════════════════════════════════════════════════════
@@ -471,6 +474,38 @@ polynomialTests = testGroup "Polynomial enrichment"
 
   , testProperty "[3,7,5,2] target 11: min q = 5" $
       minPreservingQ [3,7,5,2] 11 100 === Just 5
+  ]
+
+-- ═══════════════════════════════════════════════════════════
+-- Group 14: Probabilistic approach
+-- ═══════════════════════════════════════════════════════════
+
+probabilisticTests :: TestTree
+probabilisticTests = testGroup "Probabilistic approach"
+  [ testProperty "LP relaxation: residual is ~0" $
+      forAll genSmallSubsetSumInstance $ \(xs, target) ->
+        not (null xs) && target > 0 && target <= sum xs ==>
+          rsResidual (solveRelaxed xs target) < 0.001
+
+  , testProperty "LP relaxation: all fractions in [0,1]" $
+      forAll genSmallSubsetSumInstance $ \(xs, target) ->
+        not (null xs) && target >= 0 && target <= sum xs ==>
+          let fracs = rsFractions (solveRelaxed xs target)
+          in all (\f -> f >= 0 && f <= 1.0001) fracs
+
+  , testProperty "LP relaxation: confidence in [0,1]" $
+      forAll genSmallSubsetSumInstance $ \(xs, target) ->
+        not (null xs) && target >= 0 && target <= sum xs ==>
+          let c = rsConfidence (solveRelaxed xs target)
+          in c >= 0 && c <= 1.0001
+
+  , testProperty "Landscape: P(hit) = 0 for NO instances" $
+      let noInsts = [([3,7,5,2], 11), ([1,2,3], 7), ([1,2], 4)]
+      in all (\(xs, t) -> plTargetProb (buildLandscape 100 xs t) == 0) noInsts
+
+  , testProperty "Landscape: P(hit) > 0 for easy YES instances" $
+      -- [5,5] target=5: LP gives [1,0] → rounding always hits
+      plTargetProb (buildLandscape 100 [5, 5] 5) > 0
   ]
 
 -- ═══════════════════════════════════════════════════════════
