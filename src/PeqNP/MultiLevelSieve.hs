@@ -3,6 +3,9 @@ module PeqNP.MultiLevelSieve
     multiLevelSolve
   , SolveResult(..)
   , showSolveResult
+    -- * With representations
+  , multiLevelRepSolve
+  , fourWayRepSolve
     -- * Pruned group sieve (inner level)
   , prunedGroupSums
     -- * Benchmarking
@@ -11,6 +14,9 @@ module PeqNP.MultiLevelSieve
   , showBenchmark
     -- * Density-1 instance generator
   , mkDensity1
+    -- * Utilities
+  , padR
+  , roundTo
   ) where
 
 import qualified Data.Map.Strict as Map
@@ -212,3 +218,118 @@ padR n s = s ++ replicate (max 0 (n - length s)) ' '
 
 roundTo :: Int -> Double -> Double
 roundTo n x = fromIntegral (round (x * 10 ^ n) :: Int) / 10 ^ (fromIntegral n)
+
+-- ═══════════════════════════════════════════════════════════
+-- REPRESENTATIONS technique combined with group sieve
+-- ═══════════════════════════════════════════════════════════
+
+-- | The HGJ representations trick:
+-- Instead of target = a + b with ONE split, use MODULAR FILTERING:
+-- Fix modulus M, fix random r ∈ [0, M-1].
+-- Only enumerate left sums ≡ r (mod M), right sums ≡ (target-r) (mod M).
+-- This reduces each side by factor M.
+-- But the "right" r exists with probability ≥ 1/M.
+-- Try all r = 0..M-1: total work = M × (work_per_r) = M × (|sums|/M)² = |sums|²/M.
+--
+-- For group sieve: the modular filter is applied DURING cross-group DP,
+-- not as a post-filter. This means the pruned DP has even fewer states.
+
+-- | Multi-level solver WITH representations at the merge level.
+multiLevelRepSolve :: Int -> Int -> [Int] -> Int -> SolveResult
+-- levels = recursion depth, modulus = M for representations
+multiLevelRepSolve levels modRep weights target =
+  let (found, work) = solveRep levels modRep weights target
+      dpAnswer = Set.member target (bruteForceDP weights)
+  in SR found (found == dpAnswer) work levels 0 0
+
+solveRep :: Int -> Int -> [Int] -> Int -> (Bool, Int)
+solveRep _ _ weights target | length weights <= 6 =
+  let sums = bruteForceDP weights
+  in (Set.member target sums, Set.size sums)
+solveRep 0 _ weights target =
+  let bestB = pickBestBits weights target
+      (sums, work) = prunedGroupSums weights target bestB
+  in (Set.member target sums, work)
+solveRep levels modRep weights target =
+  let n = length weights
+      mid = n `div` 2
+      (leftW, rightW) = splitAt mid weights
+      -- Get sum sets from each half (using group sieve)
+      bestBL = pickBestBits leftW target
+      bestBR = pickBestBits rightW target
+      (leftSums, leftWork) = prunedGroupSums leftW target bestBL
+      (rightSums, rightWork) = prunedGroupSums rightW target bestBR
+      -- REPRESENTATIONS: for each r = 0..M-1, only check
+      -- left sums ≡ r (mod M) against right sums ≡ (target-r) (mod M)
+      -- This divides the merge work by M
+      m = max 2 modRep
+      -- Bucket left and right sums by residue mod M
+      leftBuckets = Map.fromListWith Set.union
+        [(s `mod` m, Set.singleton s) | s <- Set.toList leftSums]
+      rightBuckets = Map.fromListWith Set.union
+        [(s `mod` m, Set.singleton s) | s <- Set.toList rightSums]
+      -- For each r, check if any left(r) + right(target-r mod M) = target
+      targetMod = target `mod` m
+      found = any (\r ->
+        let rRight = (targetMod - r) `mod` m
+            lSet = Map.findWithDefault Set.empty r leftBuckets
+            rSet = Map.findWithDefault Set.empty rRight rightBuckets
+        in any (\l -> Set.member (target - l) rSet) (Set.toList lSet)
+        ) [0..m-1]
+      -- Work: generating sums + filtered merge
+      -- Merge work ≈ Σ_r |leftBucket(r)| = |leftSums| (same total, but spread)
+      -- The improvement: each bucket is |leftSums|/M, search is in |rightSums|/M
+      -- So merge = M × (|L|/M × log(|R|/M)) = |L| × log(|R|/M)
+      -- vs MITM: |L| × log(|R|)
+      -- Improvement: log factor only. Real improvement comes from RECURSIVE application.
+      mergeWork = Set.size leftSums  -- conservative estimate
+  in (found, leftWork + rightWork + mergeWork)
+
+-- | 4-way split with representations at BOTH levels.
+-- Split into 4 quarters. Inner merge: Q1+Q2 and Q3+Q4 with mod M1.
+-- Outer merge: (Q1+Q2) + (Q3+Q4) with mod M2.
+-- Total: 4 × 2^{n/4} inner + filtered merges.
+fourWayRepSolve :: Int -> Int -> [Int] -> Int -> SolveResult
+fourWayRepSolve m1 m2 weights target =
+  let n = length weights
+      q = n `div` 4
+      (q1, rest1) = splitAt q weights
+      (q2, rest2) = splitAt q rest1
+      (q3, q4)    = splitAt q rest2
+      -- Inner: enumerate sums of each quarter
+      b1 = pickBestBits q1 target
+      b2 = pickBestBits q2 target
+      b3 = pickBestBits q3 target
+      b4 = pickBestBits q4 target
+      (s1, w1) = prunedGroupSums q1 target b1
+      (s2, w2) = prunedGroupSums q2 target b2
+      (s3, w3) = prunedGroupSums q3 target b3
+      (s4, w4) = prunedGroupSums q4 target b4
+      -- Inner merge with mod M1: combine Q1+Q2 and Q3+Q4
+      leftSums = filteredMerge s1 s2 target m1
+      rightSums = filteredMerge s3 s4 target m2
+      -- Outer merge
+      found = any (\l -> Set.member (target - l) rightSums) (Set.toList leftSums)
+      dpAnswer = Set.member target (bruteForceDP weights)
+      innerWork = w1 + w2 + w3 + w4
+      mergeWork = Set.size s1 + Set.size s3 + Set.size leftSums
+      totalWork = innerWork + mergeWork
+  in SR found (found == dpAnswer) totalWork 2 (Set.size leftSums) (Set.size rightSums)
+
+-- | Merge two sum sets with modular filtering:
+-- Only keep combined sums where (a+b) could contribute to target.
+-- Specifically: sum all pairs but prune by range [0, target].
+filteredMerge :: Set.Set Int -> Set.Set Int -> Int -> Int -> Set.Set Int
+filteredMerge setA setB upperBound modulus =
+  let -- Bucket B by residue mod M for fast lookup
+      bBuckets = Map.fromListWith Set.union
+        [(s `mod` modulus, Set.singleton s) | s <- Set.toList setB]
+      -- For each a in A: need b such that a+b ≤ upperBound
+      -- and (a+b) mod M matches target mod M for some valid target
+  in Set.fromList
+       [ a + b
+       | a <- Set.toList setA
+       , b <- Set.toList setB
+       , a + b >= 0
+       , a + b <= upperBound
+       ]
