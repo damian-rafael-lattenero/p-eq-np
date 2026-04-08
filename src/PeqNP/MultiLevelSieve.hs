@@ -106,7 +106,42 @@ precompute b ws =
                   [(cnt, Set.singleton s) | (cnt, s) <- allSubs]
   in Map.toList grouped
 
--- (crossGroupDP replaced by crossGroupDPTight above)
+-- | Enumerate ALL achievable sums using group sieve (NO target-based pruning).
+-- Only prunes by upper bound (sum of all weights). Used for inner levels
+-- where we need all sums, not just target-relevant ones.
+allGroupSums :: [Int] -> Int -> (Set.Set Int, Int)
+allGroupSums [] _ = (Set.singleton 0, 1)
+allGroupSums weights bitsToMatch =
+  let mask = (2^bitsToMatch) - 1
+      modulus = 2^bitsToMatch
+      groupMap = Map.fromListWith (++) [(w .&. mask, [w]) | w <- weights]
+      groupList = Map.toList groupMap
+      opts = [ (lowBits, precompute bitsToMatch ws) | (lowBits, ws) <- groupList ]
+      -- Cross-group DP with NO lower-bound pruning
+      initial = Set.singleton (0 :: Int, 0 :: Int)
+      upperH = sum weights `div` modulus + 1
+      (final, work) = crossGroupAll modulus upperH opts initial 0
+      sums = Set.fromList [ h * modulus + l
+                          | (h, l) <- Set.toList final
+                          , h * modulus + l >= 0
+                          , h * modulus + l <= sum weights ]
+      perGroupWork = sum [2 ^ length ws | (_, ws) <- groupList]
+  in (sums, work + perGroupWork)
+
+-- | Cross-group DP with ONLY upper bound pruning (for enumeration, not search).
+crossGroupAll :: Int -> Int -> [(Int, [(Int, Set.Set Int)])]
+              -> Set.Set (Int, Int) -> Int -> (Set.Set (Int, Int), Int)
+crossGroupAll _ _ [] states work = (states, work)
+crossGroupAll modulus ubH ((lowBits, opts):rest) states work =
+  let expanded = Set.fromList
+        [ (hAcc + hNew, lAcc + cnt * lowBits)
+        | (hAcc, lAcc) <- Set.toList states
+        , (cnt, hSums) <- opts
+        , hNew <- Set.toList hSums
+        ]
+      -- Only prune upper bound (no lower bound)
+      pruned = Set.filter (\(h, l) -> h + l `div` modulus <= ubH) expanded
+  in crossGroupAll modulus ubH rest pruned (work + Set.size pruned)
 
 subsequences :: [a] -> [[a]]
 subsequences [] = [[]]
@@ -314,11 +349,11 @@ fourWayRepSolve m1 m2 weights target =
       b2 = pickBestBits q2 target
       b3 = pickBestBits q3 target
       b4 = pickBestBits q4 target
-      -- Use bruteForceDP for quarters (they're small: n/4 elements)
-      s1 = bruteForceDP q1; w1 = Set.size s1
-      s2 = bruteForceDP q2; w2 = Set.size s2
-      s3 = bruteForceDP q3; w3 = Set.size s3
-      s4 = bruteForceDP q4; w4 = Set.size s4
+      -- Per quarter: enumerate ALL sums using group sieve (upper-only pruning)
+      (s1, w1) = allGroupSums q1 b1
+      (s2, w2) = allGroupSums q2 b2
+      (s3, w3) = allGroupSums q3 b3
+      (s4, w4) = allGroupSums q4 b4
       -- Inner merge with mod M1: combine Q1+Q2 and Q3+Q4
       -- RANGE-BOUNDED merge: only produce sums useful for hitting target
       maxRight = sum q3 + sum q4
