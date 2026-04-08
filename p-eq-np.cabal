@@ -38,6 +38,8 @@ library
     PeqNP.LazyTree
     PeqNP.Streaming
     PeqNP.Diagonal
+    PeqNP.FingerTree
+    PeqNP.UnifiedExperiments
   build-depends:
     base >= 4.21 && < 5,
     containers >= 0.7

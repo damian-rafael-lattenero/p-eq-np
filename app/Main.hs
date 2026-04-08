@@ -25,6 +25,8 @@ import PeqNP.Landscape (buildLandscape, showLandscape, showHistogram, ProbLandsc
 import PeqNP.LazyTree (searchWithStats, showPruneStats)
 import PeqNP.Streaming (streamingSolve, showStreamStats)
 import PeqNP.Diagonal (diagonalExperiment, showDiagonalResults, greedyLargest, greedySmallest, alwaysInclude, alwaysSkip, thresholdHalf, alternating)
+import PeqNP.FingerTree (fingerTreeSolve, showFTStats)
+import PeqNP.UnifiedExperiments (unifiedAnalysis, showUnifiedTable)
 
 main :: IO ()
 main = do
@@ -382,6 +384,31 @@ main = do
   putStrLn ""
   putStrLn "  Every simple strategy is defeated at small n."
   putStrLn "  The question: does n_defeat grow with strategy complexity?"
+  putStrLn ""
+
+  sectionHeader "25. Finger tree with monoidal pruning"
+  putStrLn "  Annotation [minSum, maxSum] enables O(1) prune per node."
+  putStrLn ""
+  putStrLn "  [3,7,5,2] target=10:"
+  putStr $ showFTStats (fingerTreeSolve [3,7,5,2] 10)
+  putStrLn ""
+  putStrLn "  [1,2,3,5,8,13] target=15:"
+  putStr $ showFTStats (fingerTreeSolve [1,2,3,5,8,13] 15)
+  putStrLn ""
+  putStrLn "  [1,2,3,5,8,13,21] target=54 (NO):"
+  putStr $ showFTStats (fingerTreeSolve [1,2,3,5,8,13,21] 54)
+  putStrLn ""
+
+  sectionHeader "26. UNIFIED TABLE: all phases compared"
+  let unifiedInstances =
+        [ ([3, 7, 5, 2], 10)           -- n=4, YES
+        , ([3, 7, 5, 2], 11)           -- n=4, NO
+        , ([1, 2, 3, 5, 8], 10)        -- n=5, YES
+        , ([1, 2, 3, 5, 8], 20)        -- n=5, NO
+        , ([1, 2, 3, 5, 8, 13], 15)    -- n=6, YES
+        , ([1, 2, 3, 5, 8, 13], 33)    -- n=6, NO
+        ]
+  putStr $ showUnifiedTable (unifiedAnalysis unifiedInstances)
   putStrLn ""
 
   putStrLn "═══════════════════════════════════════════════════════════"
