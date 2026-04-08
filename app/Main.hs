@@ -26,7 +26,7 @@ import PeqNP.LazyTree (searchWithStats, showPruneStats)
 import PeqNP.Streaming (streamingSolve, showStreamStats)
 import PeqNP.Diagonal (diagonalExperiment, showDiagonalResults, greedyLargest, greedySmallest, alwaysInclude, alwaysSkip, thresholdHalf, alternating)
 import PeqNP.FingerTree (fingerTreeSolve, showFTStats, measureDifficulty, showDifficultyProfile)
-import PeqNP.BitDecompose (analyzeCarry, showCarryProfile, bitLevelSolve, BitLevelStats(..), decomposeProblem, BitColumn(..), coupledBitSolve, showCoupledStats, untieRetieExperiment, showUntieRetie, interleavedSolve, showInterleavedStats, showBasisSearch, showGF2Results, solveInTransformedBasis, showGF2SolverResult)
+import PeqNP.BitDecompose (analyzeCarry, showCarryProfile, bitLevelSolve, BitLevelStats(..), decomposeProblem, BitColumn(..), coupledBitSolve, showCoupledStats, untieRetieExperiment, showUntieRetie, interleavedSolve, showInterleavedStats, showBasisSearch, showGF2Results, solveInTransformedBasis, showGF2SolverResult, analyzeRank, showRankAnalysis)
 import PeqNP.UnifiedExperiments (unifiedAnalysis, showUnifiedTable)
 
 main :: IO ()
@@ -593,6 +593,31 @@ main = do
 
   putStrLn "  [3,5,6,7] target=11 (YES: 5+6):"
   putStr $ showGF2SolverResult (solveInTransformedBasis [3,5,6,7] 11)
+  putStrLn ""
+
+  sectionHeader "35. GF(2) RANK: how much CAN overlap be reduced?"
+  putStrLn "  If rank = n → overlap can reach 0 (diagonal form)"
+  putStrLn "  If rank < n → some overlap is unavoidable"
+  putStrLn ""
+
+  putStrLn "  [3,5,7]:"
+  putStr $ showRankAnalysis (analyzeRank [3,5,7])
+  putStrLn ""
+
+  putStrLn "  [1,2,3,5,8,13]:"
+  putStr $ showRankAnalysis (analyzeRank [1,2,3,5,8,13])
+  putStrLn ""
+
+  putStrLn "  [1,2,4,8,16,32] (super-increasing):"
+  putStr $ showRankAnalysis (analyzeRank [1,2,4,8,16,32])
+  putStrLn ""
+
+  putStrLn "  [3,5,6,7,9,10,11] (7 dense weights):"
+  putStr $ showRankAnalysis (analyzeRank [3,5,6,7,9,10,11])
+  putStrLn ""
+
+  putStrLn "  [7,11,13,14,15] (very dense 4-bit):"
+  putStr $ showRankAnalysis (analyzeRank [7,11,13,14,15])
   putStrLn ""
 
   putStrLn "═══════════════════════════════════════════════════════════"

@@ -39,6 +39,11 @@ module PeqNP.BitDecompose
   , GF2SolverResult(..)
   , solveInTransformedBasis
   , showGF2SolverResult
+    -- * GF(2) rank analysis: theoretical limits
+  , gf2Rank
+  , RankAnalysis(..)
+  , analyzeRank
+  , showRankAnalysis
   ) where
 
 import qualified Data.Set as Set
@@ -817,4 +822,94 @@ showGF2SolverResult r = unlines
             else if gf2TransMaxStates r == gf2OrigMaxStates r
             then "Same number of states."
             else "MORE states in transformed basis (" ++ show (gf2OrigMaxStates r) ++ " → " ++ show (gf2TransMaxStates r) ++ ")"
+  ]
+
+-- ═══════════════════════════════════════════════════════════
+-- GF(2) rank analysis: how much CAN overlap be reduced?
+-- ═══════════════════════════════════════════════════════════
+
+-- | Compute the rank of a binary matrix over GF(2) using Gaussian elimination.
+gf2Rank :: BitMatrix -> Int
+gf2Rank [] = 0
+gf2Rank mat =
+  let rows = length mat
+      cols = if null mat then 0 else length (head mat)
+  in go 0 0 mat
+  where
+    go pivotRow pivotCol m
+      | pivotRow >= length m || pivotCol >= (if null m then 0 else length (head m)) = pivotRow
+      | otherwise =
+          -- Find a row with 1 at pivotCol
+          case findPivot pivotRow pivotCol m of
+            Nothing -> go pivotRow (pivotCol + 1) m  -- no pivot in this col, try next
+            Just pr ->
+              let m' = swapRows pivotRow pr m
+                  m'' = eliminateCol pivotRow pivotCol m'
+              in go (pivotRow + 1) (pivotCol + 1) m''
+
+    findPivot startRow col m =
+      case [r | r <- [startRow..length m - 1], (m !! r) !! col] of
+        (r:_) -> Just r
+        []    -> Nothing
+
+    swapRows i j m
+      | i == j = m
+      | otherwise = [ if k == i then m !! j else if k == j then m !! i else m !! k
+                     | k <- [0..length m - 1] ]
+
+    eliminateCol pivotRow pivotCol m =
+      [ if r /= pivotRow && (m !! r) !! pivotCol
+        then zipWith (/=) (m !! r) (m !! pivotRow)  -- XOR rows
+        else m !! r
+      | r <- [0..length m - 1]
+      ]
+
+data RankAnalysis = RA
+  { raElements       :: [Int]
+  , raN              :: Int
+  , raBits           :: Int
+  , raGF2Rank        :: Int
+  , raTheoreticalMin :: Int     -- theoretical minimum overlap
+  , raActualOverlap  :: Int     -- current overlap
+  , raBestGF2Overlap :: Int     -- best found via GF(2) search
+  , raReduction      :: String  -- e.g. "2^8 → 2^2"
+  } deriving (Show)
+
+analyzeRank :: [Int] -> RankAnalysis
+analyzeRank elems =
+  let mat = weightsToBitMatrix elems
+      n = length elems
+      b = if null mat then 0 else length (head mat)
+      rank = gf2Rank mat
+      -- Theoretical: if rank = n, overlap can reach 0
+      -- If rank < n, at least n - rank weights share columns → overlap ≥ ceil((n-rank)/rank)
+      theoMin = if rank >= n then 0
+                else max 1 ((n - rank + rank - 1) `div` rank)
+      actualOverlap = overlapOfMatrix mat
+      (_, bestOverlap, _) = searchGF2Transforms elems
+  in RA
+    { raElements       = elems
+    , raN              = n
+    , raBits           = b
+    , raGF2Rank        = rank
+    , raTheoreticalMin = theoMin
+    , raActualOverlap  = actualOverlap
+    , raBestGF2Overlap = bestOverlap
+    , raReduction      = "2^" ++ show actualOverlap ++ " → 2^" ++ show bestOverlap
+                       ++ " (theoretical min: 2^" ++ show theoMin ++ ")"
+    }
+
+showRankAnalysis :: RankAnalysis -> String
+showRankAnalysis ra = unlines
+  [ "  Weights: " ++ show (raElements ra)
+  , "  n=" ++ show (raN ra) ++ " bits=" ++ show (raBits ra)
+      ++ " GF(2) rank=" ++ show (raGF2Rank ra)
+  , "  Overlap: actual=" ++ show (raActualOverlap ra)
+      ++ " → best found=" ++ show (raBestGF2Overlap ra)
+      ++ " → theoretical min=" ++ show (raTheoreticalMin ra)
+  , "  State reduction: " ++ raReduction ra
+  , "  " ++ if raGF2Rank ra >= raN ra
+            then "FULL RANK: overlap=0 theoretically achievable! (2^n → 2^0)"
+            else "RANK DEFICIENT: rank=" ++ show (raGF2Rank ra) ++ " < n=" ++ show (raN ra)
+                 ++ " → some overlap unavoidable"
   ]
