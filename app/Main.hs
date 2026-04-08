@@ -18,7 +18,7 @@ import PeqNP.VariableOrdering (naturalOrder, sortedAsc, sortedDesc, greedyMinSta
 import PeqNP.CategoryExperiments (showComparisonTable)
 import PeqNP.Polynomial (expand, ProductForm(..), showPoly, nonzeroTerms, hasCoeff)
 import PeqNP.PolyQuotient (buildProductMod, polyModHasCoeff, polyModCoeffAt, polyScaling, PolyScalingPoint(..))
-import PeqNP.NTT (evalProductAt, nttCoeffAt)
+import PeqNP.NTT (evalProductAt, nttCoeffAt, modPow)
 import PeqNP.Relaxation (solveRelaxed, showRelaxed, RelaxedSolution(..))
 import PeqNP.Rounding (probabilisticSolve, showStats)
 import PeqNP.Landscape (buildLandscape, showLandscape, showHistogram, ProbLandscape(..))
@@ -791,6 +791,38 @@ main = do
 
   putStrLn "  If ALL FP rates < 0.5 → majority vote always correct"
   putStrLn "  → Subset Sum ∈ BPP → likely P = NP"
+  putStrLn ""
+
+  sectionHeader "41. DISTRIBUTIVE: Schwartz-Zippel on g(x)/x^T"
+  putStrLn "  g(α)*α^(-T) mod p is O(n) per evaluation."
+  putStrLn "  If [x^T]g(x) ≠ 0, then g(α)*α^(-T) ≠ 0 with high prob."
+  putStrLn "  Test: for YES instances with small prime p, does it detect?"
+  putStrLn ""
+
+  let szEval ws t p alpha =
+        let gAlpha = foldl (\acc w -> (acc * ((1 + modPow p alpha w) `mod` p)) `mod` p) 1 ws
+            invAlphaT = modPow p alpha (p - 1 - (t `mod` (p-1)))
+        in (gAlpha * invAlphaT) `mod` p
+
+  let szTest ws t p = do
+        let results = [szEval ws t p alpha | alpha <- [2..p-1]]
+            nonzero = length (filter (/= 0) results)
+            total = length results
+            rate = fromIntegral nonzero / fromIntegral (max 1 total) :: Double
+        putStrLn $ "    p=" ++ padRight 6 (show p)
+                ++ "nonzero: " ++ padRight 8 (show nonzero ++ "/" ++ show total)
+                ++ "rate: " ++ show (roundTo' 2 rate)
+
+  putStrLn "  [3,5,7] target=8 (YES: 3+5=8):"
+  mapM_ (szTest [3,5,7] 8) [7, 11, 13, 17, 23, 31, 97]
+  putStrLn ""
+
+  putStrLn "  [1,2,3,5,8,13] target=15 (YES):"
+  mapM_ (szTest [1,2,3,5,8,13] 15) [17, 23, 31, 97]
+  putStrLn ""
+
+  putStrLn "  [3,5,7] target=6 (NO — should be ALL zero):"
+  mapM_ (szTest [3,5,7] 6) [7, 11, 13, 17, 23, 31, 97]
   putStrLn ""
 
   putStrLn "═══════════════════════════════════════════════════════════"
