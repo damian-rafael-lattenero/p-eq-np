@@ -726,6 +726,48 @@ main = do
     putStrLn ""
     ) detailedTests
 
+  sectionHeader "39. LARGE SCALE: level-0 corrections vs n (n=5..20)"
+  putStrLn "  If level-0 corrections = O(n) → total is polynomial."
+  putStrLn "  If level-0 corrections = O(2^n) → still exponential."
+  putStrLn ""
+  putStrLn "  n    type        DP sums  L0 corr  L0/n   L0/DP"
+  putStrLn $ "  " ++ replicate 55 '-'
+
+  -- Dense: consecutive odd numbers [3,5,7,...,2n+1]
+  let denseN n = [2*i+1 | i <- [1..n]]
+  -- Fibonacci
+  let fibN n = take n $ drop 2 fibs where fibs = 0 : 1 : zipWith (+) fibs (tail fibs)
+  -- Random-ish: primes
+  let primeN n = take n [p | p <- [2..], isPrime p]
+      isPrime p = p > 1 && all (\d -> p `mod` d /= 0) [2..floor (sqrt (fromIntegral p) :: Double)]
+
+  mapM_ (\(name, gen) ->
+    mapM_ (\n -> do
+      let ws = gen n
+          t = sum ws `div` 2 + 1
+          rr = recursiveGF2Solve ws t
+          dp = rrDPSize rr
+          l0 = if null (rrCorrectionSizes rr) then 0 else head (rrCorrectionSizes rr)
+          l0n = if n > 0 then fromIntegral l0 / fromIntegral n else 0 :: Double
+          l0dp = if dp > 0 then fromIntegral l0 / fromIntegral dp else 0 :: Double
+      putStrLn $ "  " ++ padRight 5 (show n)
+              ++ padRight 12 name
+              ++ padRight 9 (show dp)
+              ++ padRight 9 (show l0)
+              ++ padRight 7 (show (roundTo' 1 l0n))
+              ++ show (roundTo' 3 l0dp)
+      ) [5,8,10,12,14,16,18,20]
+    ) [ ("dense", denseN)
+      , ("fibonacci", fibN)
+      , ("primes", primeN)
+      ]
+
+  putStrLn ""
+  putStrLn "  L0/n = level-0 corrections per element."
+  putStrLn "  If L0/n stays CONSTANT → L0 = O(n) → POLYNOMIAL!"
+  putStrLn "  If L0/n grows → L0 = super-linear → check rate."
+  putStrLn ""
+
   putStrLn "═══════════════════════════════════════════════════════════"
   putStrLn " PROJECT SUMMARY (Phases A-I)"
   putStrLn " A-C: Enriched categories, BF, DP, SAT connection"
