@@ -27,6 +27,7 @@ module PeqNP.Interference
   , showAutoResult
     -- * Group-based sieve: large groups, not just pairs
   , GroupSieveResult(..)
+  , GroupInfo(..)
   , groupSieve
   , showGroupSieveResult
   ) where
