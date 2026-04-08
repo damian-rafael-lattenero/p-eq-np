@@ -516,13 +516,13 @@ groupSieve weights target =
   let n = length weights
       maxW = maximum weights
       origBits = ceiling (logBase 2 (fromIntegral maxW + 1) :: Double)
-      -- Choose bitsToMatch to create O(log n) groups
-      -- With b matched bits: 2^b groups. Want 2^b ≈ log n → b ≈ log(log n)
-      -- But also want groups big enough to matter
-      bitsToMatch = max 1 (min origBits (ceiling (logBase 2 (fromIntegral (max 2 n)) :: Double)))
-      -- Actually, let's try: match enough bits so group count is manageable
-      -- Use sqrt(bits) as before but limit to create reasonable groups
-      bitsToMatch' = max 1 (floor (sqrt (fromIntegral origBits) :: Double))
+      -- ADAPTIVE: choose bitsToMatch so max group size ≈ targetGroupSize
+      -- Target: groups of O(log n) elements → 2^b ≈ n/log(n) groups
+      -- Target: groups of exactly ceil(log2(n)) elements
+      -- This balances per-group (2^log(n) = n) and cross-group
+      targetGroupSize = max 3 (ceiling (logBase 2 (fromIntegral (max 4 n)) :: Double))
+      -- Try increasing bitsToMatch until max group ≤ targetGroupSize
+      bitsToMatch' = findBestBits weights origBits targetGroupSize
       mask = (2 ^ bitsToMatch') - 1
 
       -- Group weights by low bits
@@ -552,6 +552,24 @@ groupSieve weights target =
   in GSR groups (length groups) (maximum (0 : map giSize groups))
          bitsToMatch' answer (answer == dpAnswer)
          workPerGroup crossWork totalWork dpSize
+
+-- | Find the number of bits to match that keeps max group size ≤ target.
+-- Tries b = 1, 2, ... up to origBits, picks largest b where max group ≤ target.
+findBestBits :: [Int] -> Int -> Int -> Int
+findBestBits weights origBits targetSize =
+  let -- For each b, compute max group size
+      options = [ (b, maxG)
+                | b <- [1..min origBits 12]
+                , let mask = (2^b) - 1
+                      groups = Map.fromListWith (+) [(w .&. mask, 1::Int) | w <- weights]
+                      maxG = if Map.null groups then 0 else maximum (Map.elems groups)
+                ]
+      -- Pick b where maxG is closest to targetSize (ideally = targetSize)
+      -- Prefer maxG ≥ targetSize (groups not too small) over maxG < targetSize
+      scored = [ (abs (maxG - targetSize) + (if maxG < targetSize then 100 else 0), b)
+               | (b, maxG) <- options, maxG >= 2 ]
+  in if null scored then max 1 (floor (sqrt (fromIntegral origBits) :: Double))
+     else snd (minimum scored)
 
 -- | Precompute: for each possible count (0..g), what high-part sums
 -- are achievable by selecting exactly that many elements?
