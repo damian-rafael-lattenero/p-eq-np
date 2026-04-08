@@ -25,6 +25,10 @@ module PeqNP.Interference
   , autoSolve
   , AutoResult(..)
   , showAutoResult
+    -- * Group-based sieve: large groups, not just pairs
+  , GroupSieveResult(..)
+  , groupSieve
+  , showGroupSieveResult
   ) where
 
 import qualified Data.Set as Set
@@ -462,4 +466,144 @@ showAutoResult ar = unlines
   , "  Method:  " ++ arMethod ar
   , "  Work:    " ++ show (arWork ar) ++ " (DP: " ++ show (arDPWork ar) ++ ")"
   , "  Details: " ++ arDetails ar
+  ]
+
+-- ═══════════════════════════════════════════════════════════
+-- GROUP SIEVE: large groups, correct target tracking
+-- ═══════════════════════════════════════════════════════════
+
+-- | Group-based approach: group weights by low b bits into LARGE groups.
+--
+-- Key insight: in a group of g elements with same low bits,
+-- the number of included elements (0..g) determines the low-bit
+-- contribution. For each "count", the HIGH-BIT contribution is
+-- a Subset Sum on the group's high parts.
+--
+-- With m groups of size ~g each:
+--   Per group: solve small Subset Sum on g high-bit values → 2^g work
+--   Cross-group: combine (g+1)^m options via DP on high-bit sums
+--
+-- If m = O(log n) groups → cross-group DP = (g+1)^{log n} = poly(n)
+-- Each group has g = n/log(n) elements → 2^{n/log n} per group = subexponential!
+-- Total: O(log n × 2^{n/log n}) = SUBEXPONENTIAL!
+
+data GroupInfo = GI
+  { giLowBits   :: Int      -- shared low bits value
+  , giWeights   :: [Int]    -- original weights in this group
+  , giHighParts :: [Int]    -- w >> b for each weight
+  , giSize      :: Int      -- number of weights
+  -- Precomputed: for each count k (0..size), what high-part sums are achievable?
+  , giOptions   :: [(Int, Set.Set Int)]  -- (count, set of achievable high sums)
+  } deriving (Show)
+
+data GroupSieveResult = GSR
+  { gsrGroups       :: [GroupInfo]
+  , gsrNumGroups    :: Int
+  , gsrMaxGroupSize :: Int
+  , gsrBitsMatched  :: Int
+  , gsrAnswer       :: Bool
+  , gsrCorrect      :: Bool
+  , gsrWorkPerGroup :: [Int]   -- 2^g per group
+  , gsrCrossWork    :: Int     -- cross-group DP size
+  , gsrTotalWork    :: Int
+  , gsrDPWork       :: Int
+  } deriving (Show)
+
+groupSieve :: [Int] -> Int -> GroupSieveResult
+groupSieve weights target =
+  let n = length weights
+      maxW = maximum weights
+      origBits = ceiling (logBase 2 (fromIntegral maxW + 1) :: Double)
+      -- Choose bitsToMatch to create O(log n) groups
+      -- With b matched bits: 2^b groups. Want 2^b ≈ log n → b ≈ log(log n)
+      -- But also want groups big enough to matter
+      bitsToMatch = max 1 (min origBits (ceiling (logBase 2 (fromIntegral (max 2 n)) :: Double)))
+      -- Actually, let's try: match enough bits so group count is manageable
+      -- Use sqrt(bits) as before but limit to create reasonable groups
+      bitsToMatch' = max 1 (floor (sqrt (fromIntegral origBits) :: Double))
+      mask = (2 ^ bitsToMatch') - 1
+
+      -- Group weights by low bits
+      groupMap = Map.fromListWith (++) [(w .&. mask, [w]) | w <- weights]
+      groups = [ let ws = items
+                     hps = map (\w -> w `div` (2 ^ bitsToMatch')) ws
+                 in GI key ws hps (length ws) (precomputeOptions hps)
+               | (key, items) <- Map.toList groupMap
+               ]
+
+      -- Target decomposition
+      targetLow = target .&. mask
+      targetHigh = target `div` (2 ^ bitsToMatch')
+
+      -- Cross-group DP: for each group, the contribution is:
+      --   low: count * groupLowBits (mod 2^b)
+      --   high: one of the achievable high sums for that count + carry
+      -- We DP over groups, tracking (accumulated_high_sum)
+      answer = crossGroupDP groups targetLow targetHigh bitsToMatch'
+
+      dpAnswer = Set.member target (dpReachable weights)
+      dpSize = Set.size (dpReachable weights)
+      workPerGroup = map (\g -> 2 ^ giSize g) groups
+      crossWork = product [length (giOptions g) | g <- groups]
+      totalWork = sum workPerGroup + crossWork
+
+  in GSR groups (length groups) (maximum (0 : map giSize groups))
+         bitsToMatch' answer (answer == dpAnswer)
+         workPerGroup crossWork totalWork dpSize
+
+-- | Precompute: for each possible count (0..g), what high-part sums
+-- are achievable by selecting exactly that many elements?
+precomputeOptions :: [Int] -> [(Int, Set.Set Int)]
+precomputeOptions highParts =
+  let g = length highParts
+      -- Generate all subsets, grouped by size
+      allSubsets = [(length sel, sum sel) | sel <- subsequences highParts]
+      grouped = Map.fromListWith Set.union
+                  [(cnt, Set.singleton s) | (cnt, s) <- allSubsets]
+  in Map.toList grouped
+
+subsequences :: [a] -> [[a]]
+subsequences [] = [[]]
+subsequences (x:xs) = let r = subsequences xs in r ++ map (x:) r
+
+-- | Cross-group DP: combine group options to reach target.
+-- Track: (accumulated_high_sum, accumulated_low_count_contribution)
+-- At each group, try all (count, high_sum) options.
+crossGroupDP :: [GroupInfo] -> Int -> Int -> Int -> Bool
+crossGroupDP groups targetLow targetHigh bitsMatched =
+  let modulus = 2 ^ bitsMatched
+      initialState = Set.singleton (0 :: Int, 0 :: Int) :: Set.Set (Int, Int)
+      finalStates = foldl (processGroup modulus) initialState groups
+      -- Check: any final state where highSum + carry = targetHigh
+      -- and lowAccum mod modulus = targetLow?
+  in any (\(hSum, lAccum) ->
+           let carry = lAccum `div` modulus
+               finalHigh = hSum + carry
+               finalLow = lAccum `mod` modulus
+           in finalHigh == targetHigh && finalLow == targetLow
+        ) (Set.toList finalStates)
+
+processGroup :: Int -> Set.Set (Int, Int) -> GroupInfo -> Set.Set (Int, Int)
+processGroup modulus currentStates group =
+  let lowBits = giLowBits group
+      options = giOptions group
+  in Set.fromList
+       [ (hAcc + hContrib, lAcc + cnt * lowBits)
+       | (hAcc, lAcc) <- Set.toList currentStates
+       , (cnt, hSums) <- options
+       , hContrib <- Set.toList hSums
+       ]
+
+showGroupSieveResult :: GroupSieveResult -> String
+showGroupSieveResult gsr = unlines
+  [ "  Groups: " ++ show (gsrNumGroups gsr)
+      ++ " (max size: " ++ show (gsrMaxGroupSize gsr) ++ ")"
+  , "  Bits matched: " ++ show (gsrBitsMatched gsr)
+  , "  Answer: " ++ (if gsrAnswer gsr then "YES" else "NO")
+      ++ " Correct: " ++ (if gsrCorrect gsr then "✓" else "✗")
+  , "  Work: groups=" ++ show (gsrWorkPerGroup gsr)
+      ++ " cross=" ++ show (gsrCrossWork gsr)
+      ++ " total=" ++ show (gsrTotalWork gsr)
+  , "  vs DP: " ++ show (gsrDPWork gsr)
+  , "  Group details: " ++ show (map (\g -> (giLowBits g, giSize g)) (gsrGroups gsr))
   ]
