@@ -894,6 +894,40 @@ main = do
   putStrLn "  DEAD ZONE = instances where method = 'DEAD ZONE'"
   putStrLn ""
 
+  sectionHeader "47. REAL DEAD ZONE HUNT: n=10, mixed parity, density ≈ 1"
+  putStrLn "  Mixed even/odd weights ≈ 2^10, no structure, density ≈ 1."
+  putStrLn "  Using FAST methods only (DP reachable + streaming + overlap)."
+  putStrLn ""
+
+  -- n=10, weights ≈ 1024, mixed parity — density ≈ 1
+  let hunt ws t tag = do
+        let cr = combinedSolve ws t
+            n = length ws
+            peak = crStreamPeak cr
+            dpSize = crDPSize cr
+            overlap = crGF2Overlap cr
+            deadZone = peak > n * n && dpSize > n * n && overlap > n `div` 2
+        putStrLn $ "  " ++ padRight 9 tag
+                ++ " d=" ++ padRight 5 (show (roundTo' 1 (crDensity cr)))
+                ++ " DP=" ++ padRight 6 (show dpSize)
+                ++ " strm=" ++ padRight 5 (show peak)
+                ++ " ovl=" ++ padRight 3 (show overlap)
+                ++ " sol=" ++ padRight 4 (if crCorrectAns cr then "YES" else "NO")
+                ++ (if deadZone then " ← DEAD ZONE!" else " → " ++ crMethod cr)
+
+  hunt [502, 757, 1018, 543, 876, 691, 1234, 419, 800, 663] 4200 "mix10a"
+  hunt [502, 757, 1018, 543, 876, 691, 1234, 419, 800, 663] 3775 "mix10a'"
+  hunt [612, 939, 1107, 458, 723, 1051, 834, 567, 1190, 401] 5100 "mix10b"
+  hunt [612, 939, 1107, 458, 723, 1051, 834, 567, 1190, 401] 4539 "mix10b'"
+  hunt [410, 623, 1087, 544, 891, 722, 1150, 367, 956, 508] 3800 "mix10c"
+  hunt [802, 515, 1233, 678, 944, 1101, 456, 789, 1067, 630] 4600 "mix10d"
+  -- Smaller: n=8 with density exactly 1
+  hunt [130, 200, 172, 255, 198, 143, 210, 187] 750 "mix8a"
+  hunt [130, 200, 172, 255, 198, 143, 210, 187] 900 "mix8b"
+  putStrLn ""
+  putStrLn "  DEAD ZONE = strm > n² AND DP > n² AND overlap > n/2"
+  putStrLn ""
+
   putStrLn "═══════════════════════════════════════════════════════════"
   putStrLn " PROJECT SUMMARY (Phases A-J)"
   putStrLn " A-C: Enriched categories, BF, DP, SAT connection"

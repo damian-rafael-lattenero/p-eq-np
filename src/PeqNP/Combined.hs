@@ -8,6 +8,7 @@ import qualified Data.Set as Set
 
 import PeqNP.DPSolver (dpReachable)
 import PeqNP.LLL (lllSolve, LLLResult(..), density)
+import PeqNP.BitDecompose (overlapForMultiplier, gf2Rank, weightsToBitMatrix)
 import PeqNP.Streaming (streamingSolve, StreamStats(..))
 import PeqNP.Topological (gapPeriodicity, analyzeGaps, GapAnalysis(..))
 import PeqNP.BitDecompose (overlapForMultiplier, gf2Rank, weightsToBitMatrix)
@@ -35,7 +36,8 @@ combinedSolve elems target =
       reachable = dpReachable elems
       correctAns = Set.member target reachable
       dpSize = Set.size reachable
-      lll = lllSolve elems target
+      lll = if n <= 8 then lllSolve elems target
+            else LLLResult False False Nothing d 0
       stream = streamingSolve elems target
       overlap = overlapForMultiplier elems 1
       rank = gf2Rank (weightsToBitMatrix elems)
