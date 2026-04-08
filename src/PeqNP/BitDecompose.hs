@@ -44,6 +44,10 @@ module PeqNP.BitDecompose
   , RankAnalysis(..)
   , analyzeRank
   , showRankAnalysis
+    -- * RECURSIVE GF(2) solver: the carry-as-Writer approach
+  , RecursiveResult(..)
+  , recursiveGF2Solve
+  , showRecursiveResult
   ) where
 
 import qualified Data.Set as Set
@@ -912,4 +916,130 @@ showRankAnalysis ra = unlines
             then "FULL RANK: overlap=0 theoretically achievable! (2^n → 2^0)"
             else "RANK DEFICIENT: rank=" ++ show (raGF2Rank ra) ++ " < n=" ++ show (raN ra)
                  ++ " → some overlap unavoidable"
+  ]
+
+-- ═══════════════════════════════════════════════════════════
+-- RECURSIVE GF(2) solver: carry correction as recursive decomposition
+-- ═══════════════════════════════════════════════════════════
+
+-- | THE RECURSIVE APPROACH:
+--
+-- Level 0: original weights [w1..wn], target T.
+--   Assign each weight to its highest bit position σ(i).
+--   "Transformed value" = 2^σ(i).
+--   "Correction" Δ_i = w_i - 2^σ(i)  (the remaining bits).
+--   In the transformed basis (overlap ≈ 0 if full rank):
+--     Subset S sums to T iff:
+--       Σ_{i∈S} 2^σ(i) + Σ_{i∈S} Δ_i = T
+--     ⟺ Σ_{i∈S} 2^σ(i) = T - Σ_{i∈S} Δ_i
+--
+--   The left side is "easy" (one bit per weight, no overlap).
+--   The right side involves Σ_{i∈S} Δ_i which is ANOTHER Subset Sum
+--   on the corrections Δ_i (which have fewer bits!).
+--
+-- Level 1: correction weights [Δ1..Δn], each ≈ B-1 bits.
+--   Apply the same decomposition. New corrections have B-2 bits.
+--
+-- ...Level B: corrections are all 0. Trivially solved.
+--
+-- TOTAL LEVELS: B = log(max_weight)
+--
+-- AT EACH LEVEL: we need to track the set of reachable correction sums.
+-- THIS is where the Writer monad lives: the correction accumulates
+-- as a "log" alongside the main computation.
+--
+-- THE KEY QUESTION: how many distinct correction sums exist at each level?
+-- If O(poly(n)) → total algorithm is O(poly(n) × B) = polynomial!
+-- If O(2^n) → no improvement.
+
+data RecursiveResult = RR
+  { rrFound           :: Bool
+  , rrCorrect         :: Bool
+  , rrLevels          :: Int             -- number of recursion levels
+  , rrCorrectionSizes :: [Int]           -- |distinct correction sums| at each level
+  , rrMaxCorrections  :: Int             -- peak correction set size
+  , rrWeightsPerLevel :: [[Int]]         -- the correction weights at each level
+  , rrDPSize          :: Int             -- DP distinct sums (for comparison)
+  } deriving (Show)
+
+recursiveGF2Solve :: [Int] -> Int -> RecursiveResult
+recursiveGF2Solve elems target =
+  let dpAnswer = Set.member target (dpReachableLocal elems)
+      dpSize = Set.size (dpReachableLocal elems)
+      (found, levels) = recurse elems target 0
+  in RR
+    { rrFound           = found
+    , rrCorrect         = found == dpAnswer
+    , rrLevels          = length levels
+    , rrCorrectionSizes = map fst levels
+    , rrMaxCorrections  = maximum (0 : map fst levels)
+    , rrWeightsPerLevel = map snd levels
+    , rrDPSize          = dpSize
+    }
+
+recurse :: [Int] -> Int -> Int -> (Bool, [(Int, [Int])])
+recurse weights target depth
+  -- Base case: all weights are 0
+  | all (== 0) weights = (target == 0, [(1, weights)])
+  -- Base case: only one non-zero weight
+  | length (filter (/= 0) weights) <= 1 =
+      let nonzero = filter (/= 0) weights
+          found = target == 0 || (not (null nonzero) && target == head nonzero)
+      in (found, [(length (Set.toList (dpReachableLocal weights)), weights)])
+  -- Safety: max depth
+  | depth > 40 = (False, [])
+  | otherwise =
+      let -- Assign each weight to its highest bit
+          highBit w = if w <= 0 then -1 else floor (logBase 2 (fromIntegral w) :: Double)
+          assignments = [(i, highBit w) | (i, w) <- zip [(0::Int)..] weights, w > 0]
+
+          -- Corrections: Δ_i = w_i - 2^highBit(w_i) for non-zero weights
+          corrections = [ w - 2 ^ highBit w | w <- weights, w > 0 ]
+          zeroWeights = [ 0 | w <- weights, w == 0 ]
+          allCorrections = corrections ++ zeroWeights
+
+          -- The "transformed sum" part: Σ 2^σ(i) for i ∈ S
+          -- This determines which bits are "used" in the top level
+          -- The target for the correction level:
+          -- We need to enumerate what transformed sums are achievable,
+          -- and for each, what correction sum is needed.
+          --
+          -- SIMPLIFIED APPROACH: just track the set of reachable
+          -- correction sums at this level (using DP on corrections)
+          correctionSums = dpReachableLocal corrections
+          correctionSize = Set.size correctionSums
+
+          -- The target correction: T - Σ 2^σ(i) for each possible selection
+          -- of top bits. For each possible top-bit selection (binary, one bit per weight),
+          -- the needed correction = T - topSum.
+          -- If that needed correction is in correctionSums → found!
+          topBitValues = [2 ^ highBit w | w <- weights, w > 0]
+          topBitSubsetSums = dpReachableLocal topBitValues
+          found = any (\topSum -> Set.member (target - topSum) correctionSums
+                                  && (target - topSum) >= 0)
+                      (Set.toList topBitSubsetSums)
+
+          -- Recurse on corrections if they're smaller
+          (subFound, subLevels) = if all (== 0) corrections
+                                  then (target `Set.member` topBitSubsetSums, [])
+                                  else recurse corrections 0 (depth + 1)
+                                  -- Note: recursing with target=0 is wrong;
+                                  -- we need to track the specific correction needed.
+                                  -- This is a simplification for measurement.
+
+      in (found, (correctionSize, allCorrections) : subLevels)
+
+showRecursiveResult :: RecursiveResult -> String
+showRecursiveResult rr = unlines $
+  [ "  Found:    " ++ show (rrFound rr)
+  , "  Correct:  " ++ show (rrCorrect rr)
+  , "  Levels:   " ++ show (rrLevels rr)
+  , "  Correction set sizes per level: " ++ show (rrCorrectionSizes rr)
+  , "  Max corrections: " ++ show (rrMaxCorrections rr)
+  , "  DP distinct sums: " ++ show (rrDPSize rr)
+  , "  Weights per level:"
+  ] ++
+  [ "    Level " ++ show i ++ ": " ++ show ws
+       ++ " (" ++ show (length (filter (/= 0) ws)) ++ " non-zero)"
+  | (i, ws) <- zip [(0::Int)..] (rrWeightsPerLevel rr)
   ]

@@ -26,7 +26,7 @@ import PeqNP.LazyTree (searchWithStats, showPruneStats)
 import PeqNP.Streaming (streamingSolve, showStreamStats)
 import PeqNP.Diagonal (diagonalExperiment, showDiagonalResults, greedyLargest, greedySmallest, alwaysInclude, alwaysSkip, thresholdHalf, alternating)
 import PeqNP.FingerTree (fingerTreeSolve, showFTStats, measureDifficulty, showDifficultyProfile)
-import PeqNP.BitDecompose (analyzeCarry, showCarryProfile, bitLevelSolve, BitLevelStats(..), decomposeProblem, BitColumn(..), coupledBitSolve, showCoupledStats, untieRetieExperiment, showUntieRetie, interleavedSolve, showInterleavedStats, showBasisSearch, showGF2Results, solveInTransformedBasis, showGF2SolverResult, analyzeRank, showRankAnalysis)
+import PeqNP.BitDecompose (analyzeCarry, showCarryProfile, bitLevelSolve, BitLevelStats(..), decomposeProblem, BitColumn(..), coupledBitSolve, showCoupledStats, untieRetieExperiment, showUntieRetie, interleavedSolve, showInterleavedStats, showBasisSearch, showGF2Results, solveInTransformedBasis, showGF2SolverResult, analyzeRank, showRankAnalysis, recursiveGF2Solve, showRecursiveResult)
 import PeqNP.UnifiedExperiments (unifiedAnalysis, showUnifiedTable)
 
 main :: IO ()
@@ -618,6 +618,28 @@ main = do
 
   putStrLn "  [7,11,13,14,15] (very dense 4-bit):"
   putStr $ showRankAnalysis (analyzeRank [7,11,13,14,15])
+  putStrLn ""
+
+  sectionHeader "36. RECURSIVE GF(2): carry correction as Writer monad"
+  putStrLn "  Strip highest bit → solve easy part → corrections are SMALLER"
+  putStrLn "  Recurse on corrections. Each level removes 1 bit."
+  putStrLn "  KEY: how many distinct correction sums at each level?"
+  putStrLn ""
+
+  putStrLn "  [3,5,7] target=8 (YES: 3+5):"
+  putStr $ showRecursiveResult (recursiveGF2Solve [3,5,7] 8)
+  putStrLn ""
+
+  putStrLn "  [1,2,3,5,8,13] target=15 (YES):"
+  putStr $ showRecursiveResult (recursiveGF2Solve [1,2,3,5,8,13] 15)
+  putStrLn ""
+
+  putStrLn "  [1,2,4,8,16,32] target=21 (YES, super-increasing):"
+  putStr $ showRecursiveResult (recursiveGF2Solve [1,2,4,8,16,32] 21)
+  putStrLn ""
+
+  putStrLn "  [3,5,6,7,9,10,11] target=20 (YES):"
+  putStr $ showRecursiveResult (recursiveGF2Solve [3,5,6,7,9,10,11] 20)
   putStrLn ""
 
   putStrLn "═══════════════════════════════════════════════════════════"
