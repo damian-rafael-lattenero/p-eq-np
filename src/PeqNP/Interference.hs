@@ -17,9 +17,15 @@ module PeqNP.Interference
   , multiPrimeTest
   , MultiPrimeResult(..)
   , showMultiPrimeResult
+    -- * Kuperberg + interference pipeline
+  , kuperbergThenInterference
+  , PipelineIntResult(..)
+  , showPipelineIntResult
   ) where
 
 import qualified Data.Set as Set
+import qualified Data.Map.Strict as Map
+import Data.Bits ((.&.))
 
 import PeqNP.DPSolver (dpReachable)
 
@@ -245,3 +251,70 @@ showMultiPrimeResult mpr = unlines
   , "  Speedup: " ++ show (roundTo 1 (fromIntegral (mprDPWork mpr) / fromIntegral (max 1 (mprTotalWork mpr)))) ++ "x"
   ]
   where roundTo n x = fromIntegral (round (x * 10^(n::Int)) :: Int) / 10^(n::Int)
+
+-- ═══════════════════════════════════════════════════════════
+-- KUPERBERG + INTERFERENCE PIPELINE
+-- ═══════════════════════════════════════════════════════════
+
+data PipelineIntResult = PIR
+  { pirOrigN          :: Int
+  , pirOrigSum        :: Int
+  , pirReducedWeights :: [Int]
+  , pirReducedSum     :: Int
+  , pirPrimes         :: [Int]
+  , pirReducedCoeffs  :: [Double]
+  , pirVerdict        :: Bool
+  , pirCorrectAnswer  :: Bool
+  , pirCorrect        :: Bool
+  , pirTotalWork      :: Int
+  , pirDPWork         :: Int
+  } deriving (Show)
+
+kuperbergThenInterference :: [Int] -> Int -> [Int] -> PipelineIntResult
+kuperbergThenInterference weights target primes =
+  let n = length weights
+      origBits = ceiling (logBase 2 (fromIntegral (maximum weights) + 1) :: Double)
+      bitsToMatch = max 1 (floor (sqrt (fromIntegral origBits) :: Double))
+      mask = (2 ^ bitsToMatch) - 1
+      -- Group by low bits and pair
+      grouped = groupByLowBits mask weights
+      (diffs, unpaired) = pairAndDiff' grouped bitsToMatch
+      reduced = filter (> 0) (diffs ++ unpaired)
+      -- Interference on reduced
+      reducedTarget = target `div` (2 ^ bitsToMatch)
+      mpr = multiPrimeTest reduced reducedTarget primes
+      dpAnswer = Set.member target (dpReachable weights)
+      dpWork = Set.size (dpReachable weights)
+      totalWork = n + length reduced * sum primes
+  in PIR n (sum weights) reduced (sum reduced) primes
+         (mprCoeffs mpr) (mprVerdict mpr) dpAnswer
+         (mprVerdict mpr == dpAnswer) totalWork dpWork
+
+groupByLowBits :: Int -> [Int] -> [[Int]]
+groupByLowBits mask ws =
+  let groups = Map.fromListWith (++) [(w .&. mask, [w]) | w <- ws]
+  in Map.elems groups
+
+pairAndDiff' :: [[Int]] -> Int -> ([Int], [Int])
+pairAndDiff' groups shift = go groups [] []
+  where
+    go [] diffs unpaired = (diffs, unpaired)
+    go (g:gs) diffs unpaired =
+      let (d, u) = processPairs g shift
+      in go gs (diffs ++ d) (unpaired ++ u)
+    processPairs [] _ = ([], [])
+    processPairs [x] s = ([], [x `div` (2^s)])
+    processPairs (a:b:rest) s =
+      let (d, u) = processPairs rest s
+      in (abs (a-b) `div` (2^s) : d, u)
+
+showPipelineIntResult :: PipelineIntResult -> String
+showPipelineIntResult pir = unlines
+  [ "  Orig: n=" ++ show (pirOrigN pir) ++ " sum=" ++ show (pirOrigSum pir)
+  , "  Reduced: " ++ show (pirReducedWeights pir) ++ " sum=" ++ show (pirReducedSum pir)
+  , "  Coeffs: " ++ show (map (\c -> fromIntegral (round (c*10)::Int)/10) (pirReducedCoeffs pir))
+  , "  Verdict: " ++ (if pirVerdict pir then "YES" else "NO")
+      ++ " correct=" ++ show (pirCorrectAnswer pir)
+      ++ " " ++ (if pirCorrect pir then "✓" else "✗")
+  , "  Work: " ++ show (pirTotalWork pir) ++ " vs DP: " ++ show (pirDPWork pir)
+  ]

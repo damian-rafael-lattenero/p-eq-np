@@ -23,6 +23,7 @@ import PeqNP.LLL (lllSolve, showLLLResult, density)
 import PeqNP.Topological (analyzeGaps, showGapAnalysis)
 import PeqNP.DensityMap (densitySweep, showDensitySweep)
 import PeqNP.Combined (combinedSolve, showCombinedResult, CombinedResult(..))
+import PeqNP.Interference (interferenceExtract, showInterferenceResult, multiPrimeTest, showMultiPrimeResult, kuperbergThenInterference, showPipelineIntResult)
 import PeqNP.Relaxation (solveRelaxed, showRelaxed, RelaxedSolution(..))
 import PeqNP.Rounding (probabilisticSolve, showStats)
 import PeqNP.Landscape (buildLandscape, showLandscape, showHistogram, ProbLandscape(..))
@@ -928,8 +929,53 @@ main = do
   putStrLn "  DEAD ZONE = strm > n² AND DP > n² AND overlap > n/2"
   putStrLn ""
 
+  -- Phase K+: Interference and Kuperberg+Interference pipeline
+  sectionHeader "48. Interference single-prime (DFT coefficient extraction)"
+  putStrLn "  [3,5,7] t=8 YES, q=16:"
+  putStr $ showInterferenceResult (interferenceExtract 16 [3,5,7] 8)
+  putStrLn "  [3,5,7] t=6 NO, q=16:"
+  putStr $ showInterferenceResult (interferenceExtract 16 [3,5,7] 6)
+  putStrLn ""
+
+  sectionHeader "49. Multi-prime interference"
+  putStrLn "  [3,5,7] t=8 YES:"
+  putStr $ showMultiPrimeResult (multiPrimeTest [3,5,7] 8 [5,7,11,13])
+  putStrLn "  [3,5,7] t=6 NO:"
+  putStr $ showMultiPrimeResult (multiPrimeTest [3,5,7] 6 [5,7,11,13])
+  putStrLn ""
+
+  sectionHeader "50. KUPERBERG + INTERFERENCE PIPELINE"
+  putStrLn "  Sieve reduces weights, THEN interference resolves."
+  putStrLn ""
+
+  let primes' = [5, 7, 11, 13, 17, 19, 23]
+
+  putStrLn "  Dead zone [502,757,...] t=3775 (NO):"
+  putStr $ showPipelineIntResult (kuperbergThenInterference [502,757,1018,543,876,691,1234,419,800,663] 3775 primes')
+  putStrLn ""
+
+  putStrLn "  Dead zone [502,757,...] t=4200 (YES):"
+  putStr $ showPipelineIntResult (kuperbergThenInterference [502,757,1018,543,876,691,1234,419,800,663] 4200 primes')
+  putStrLn ""
+
+  putStrLn "  [1,2,3,5,8,13] t=15 (YES):"
+  putStr $ showPipelineIntResult (kuperbergThenInterference [1,2,3,5,8,13] 15 primes')
+  putStrLn ""
+
+  putStrLn "  [1,2,3,5,8,13] t=33 (NO):"
+  putStr $ showPipelineIntResult (kuperbergThenInterference [1,2,3,5,8,13] 33 primes')
+  putStrLn ""
+
+  putStrLn "  [37,41,43,47,53,59] t=150 (NO):"
+  putStr $ showPipelineIntResult (kuperbergThenInterference [37,41,43,47,53,59] 150 primes')
+  putStrLn ""
+
+  putStrLn "  [97,103,107,109,113,127,131] t=400 (NO):"
+  putStr $ showPipelineIntResult (kuperbergThenInterference [97,103,107,109,113,127,131] 400 primes')
+  putStrLn ""
+
   putStrLn "═══════════════════════════════════════════════════════════"
-  putStrLn " PROJECT SUMMARY (Phases A-J)"
+  putStrLn " PROJECT SUMMARY (Phases A-K)"
   putStrLn " A-C: Enriched categories, BF, DP, SAT connection"
   putStrLn " D: Monoid homomorphisms → pigeonhole barrier"
   putStrLn " F: Myhill-Nerode, reachability → same barrier"
