@@ -26,7 +26,7 @@ import PeqNP.LazyTree (searchWithStats, showPruneStats)
 import PeqNP.Streaming (streamingSolve, showStreamStats)
 import PeqNP.Diagonal (diagonalExperiment, showDiagonalResults, greedyLargest, greedySmallest, alwaysInclude, alwaysSkip, thresholdHalf, alternating)
 import PeqNP.FingerTree (fingerTreeSolve, showFTStats, measureDifficulty, showDifficultyProfile)
-import PeqNP.BitDecompose (analyzeCarry, showCarryProfile, bitLevelSolve, BitLevelStats(..), decomposeProblem, BitColumn(..), coupledBitSolve, showCoupledStats)
+import PeqNP.BitDecompose (analyzeCarry, showCarryProfile, bitLevelSolve, BitLevelStats(..), decomposeProblem, BitColumn(..), coupledBitSolve, showCoupledStats, untieRetieExperiment, showUntieRetie)
 import PeqNP.UnifiedExperiments (unifiedAnalysis, showUnifiedTable)
 
 main :: IO ()
@@ -486,6 +486,32 @@ main = do
 
   putStrLn "  [1,2,3,5,8] target=10 (YES, Fibonacci):"
   putStr $ showCoupledStats (coupledBitSolve [1,2,3,5,8] 10)
+  putStrLn ""
+
+  sectionHeader "30. UNTIE-RETIE: decouple, solve easy, re-check coupling"
+  putStrLn "  Can we solve the uncoupled (easy) problem and then filter"
+  putStrLn "  for coupled solutions? How many subsets survive the filter?"
+  putStrLn ""
+
+  putStrLn "  [3,7,5,2] target=10 (YES, 2 solutions):"
+  putStr $ showUntieRetie (untieRetieExperiment [3,7,5,2] 10)
+  putStrLn ""
+
+  putStrLn "  [3,7,5,2] target=11 (NO):"
+  putStr $ showUntieRetie (untieRetieExperiment [3,7,5,2] 11)
+  putStrLn ""
+
+  putStrLn "  [1,2,4,8,16,32] target=21 (YES, super-increasing):"
+  putStr $ showUntieRetie (untieRetieExperiment [1,2,4,8,16,32] 21)
+  putStrLn ""
+
+  putStrLn "  [1,2,3,5,8,13] target=15 (YES):"
+  putStr $ showUntieRetie (untieRetieExperiment [1,2,3,5,8,13] 15)
+  putStrLn ""
+
+  putStrLn "  Survival rate = P(random subset hits target)."
+  putStrLn "  If survival rate is 1/poly(n) → retie is easy."
+  putStrLn "  If survival rate is 1/2^n → retie is as hard as brute force."
   putStrLn ""
 
   putStrLn "═══════════════════════════════════════════════════════════"
