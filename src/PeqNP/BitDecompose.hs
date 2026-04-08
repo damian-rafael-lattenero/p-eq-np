@@ -20,6 +20,10 @@ module PeqNP.BitDecompose
   , UntieRetie(..)
   , untieRetieExperiment
   , showUntieRetie
+    -- * Interleaved solver: carry + coupling simultaneously
+  , InterleavedStats(..)
+  , interleavedSolve
+  , showInterleavedStats
   ) where
 
 import qualified Data.Set as Set
@@ -394,3 +398,139 @@ showUntieRetie ur = unlines
   ]
   where
     roundTo' n x = fromIntegral (round (x * 10^(n::Int)) :: Int) / 10^(n::Int)
+
+-- ═══════════════════════════════════════════════════════════
+-- Interleaved solver: carry + coupling AT EACH STEP
+-- ═══════════════════════════════════════════════════════════
+
+-- | Process bit-by-bit, carrying BOTH the arithmetic carry AND the
+-- coupling decisions simultaneously. At each bit position k:
+--
+-- - Weights with a 1 at position k that are ALREADY DECIDED (from
+--   a lower position): forced to contribute 1 (if included) or 0
+-- - Weights with a 1 at position k that are NOT YET DECIDED:
+--   choose include/exclude, REMEMBER the decision for future positions
+-- - Weights with a 0 at position k: no effect, no decision needed
+--
+-- active(k) = weights decided at position ≤ k that have bits at position > k.
+-- These must be "carried" as part of the state.
+-- State = (carry, Set of included weight indices among active)
+-- If max active(k) is small → polynomial!
+
+data InterleavedStats = IS
+  { isFound       :: Bool
+  , isCorrect     :: Bool
+  , isBits        :: Int
+  , isActivePerBit :: [Int]      -- active(k) at each bit position
+  , isStatesPerBit :: [Int]      -- actual |states| at each position
+  , isMaxActive   :: Int         -- max active(k)
+  , isMaxStates   :: Int         -- max |states|
+  , isTheoreticalMax :: [Int]    -- n/2 * 2^active(k) theoretical bound
+  } deriving (Show)
+
+interleavedSolve :: [Int] -> Int -> InterleavedStats
+interleavedSolve elems target =
+  let b = maxBits elems
+      n = length elems
+      targetBits' = toBits b target
+      columns = decomposeProblem elems
+
+      -- For each weight, find the set of bit positions where it has a 1
+      weightBits :: [[Int]]  -- weight i → list of bit positions with 1
+      weightBits = [ [k | k <- [0..b-1], testBit w k] | w <- elems ]
+
+      -- highest bit position for each weight
+      highestBit :: [Int]
+      highestBit = [ if null bs then -1 else maximum bs | bs <- weightBits ]
+
+      -- Process bit by bit
+      -- State: (carry, Set of weight indices currently "committed as included")
+      initialStates :: Set (Int, Set Int)
+      initialStates = Set.singleton (0, Set.empty)
+
+      (stats, finalStates) = go 0 columns targetBits' initialStates []
+
+      found = any (\(carry, _) -> carry == 0) (Set.toList finalStates)
+      dpAnswer = Set.member target (dpReachableLocal elems)
+
+      -- Compute active weights per bit position
+      activePerBit = [ length [ i | i <- [0..n-1]
+                              , any (\pos -> pos <= k) (weightBits !! i)  -- decided at or before k
+                              , highestBit !! i > k                      -- has future bits
+                              ]
+                     | k <- [0..b-1]
+                     ]
+
+  in IS
+    { isFound        = found
+    , isCorrect      = found == dpAnswer
+    , isBits         = b
+    , isActivePerBit = activePerBit
+    , isStatesPerBit = reverse stats
+    , isMaxActive    = maximum (0 : activePerBit)
+    , isMaxStates    = maximum (0 : stats)
+    , isTheoreticalMax = [ min (n `div` 2 + 1) (n + 1) * (2 ^ (activePerBit !! k))
+                         | k <- [0..b-1] ]
+    }
+  where
+    go :: Int -> [BitColumn] -> [Bool] -> Set (Int, Set Int) -> [Int]
+       -> ([Int], Set (Int, Set Int))
+    go _ [] [] states acc = (Set.size states : acc, states)
+    go _ [] _  states acc = (Set.size states : acc, states)
+    go _ _  [] states acc = (Set.size states : acc, states)
+    go k (col:cols) (tBit:tBits) states acc =
+      let targetBitVal = if tBit then 1 else 0
+          n = length elems
+          -- Weights with a 1 at this position
+          onesHere = [i | i <- [0..n-1], bcBits col !! i]
+
+          nextStates = Set.fromList $ do
+            (carry, committed) <- Set.toList states
+            -- Partition onesHere into: already committed (forced 1), and free (choose)
+            let forced = [i | i <- onesHere, Set.member i committed]
+                free   = [i | i <- onesHere, not (Set.member i committed)]
+                forcedCount = length forced
+            -- Try all subsets of free weights
+            freeChoice <- subsetsOf free
+            let selected = forcedCount + length freeChoice
+                total = carry + selected
+            -- Check target bit
+            guard (total `mod` 2 == targetBitVal)
+            let newCarry = total `div` 2
+                newCommitted = Set.union committed (Set.fromList freeChoice)
+                -- Forget weights whose highest bit is this position
+                -- (they have no future influence)
+                forget = Set.fromList [i | i <- [0..n-1]
+                                     , highestBit' !! i == k]
+                cleaned = Set.difference newCommitted forget
+            return (newCarry, cleaned)
+
+      in go (k+1) cols tBits nextStates (Set.size states : acc)
+
+    highestBit' = [ let bs = [k' | k' <- [0..maxBits elems - 1], testBit w k']
+                    in if null bs then -1 else maximum bs
+                  | w <- elems ]
+
+    subsetsOf :: [a] -> [[a]]
+    subsetsOf []     = [[]]
+    subsetsOf (x:xs) = let rest = subsetsOf xs in rest ++ map (x:) rest
+
+    guard :: Bool -> [()]
+    guard True  = [()]
+    guard False = []
+
+showInterleavedStats :: InterleavedStats -> String
+showInterleavedStats is' = unlines $
+  [ "  Found:       " ++ show (isFound is')
+  , "  Correct:     " ++ show (isCorrect is')
+  , "  Bits:        " ++ show (isBits is')
+  , "  Active/bit:  " ++ show (isActivePerBit is')
+  , "  States/bit:  " ++ show (isStatesPerBit is')
+  , "  Max active:  " ++ show (isMaxActive is')
+  , "  Max states:  " ++ show (isMaxStates is')
+  , "  Theoretical: carry×2^active = " ++ show (isTheoreticalMax is')
+  , "  → Complexity class: " ++
+      (if isMaxActive is' <= 2 then "POLYNOMIAL (active ≤ 2)"
+       else if isMaxActive is' <= 5 then "FPT-tractable (active ≤ 5)"
+       else "EXPONENTIAL in active (active = " ++ show (isMaxActive is') ++ ")")
+  ]

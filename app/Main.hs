@@ -26,7 +26,7 @@ import PeqNP.LazyTree (searchWithStats, showPruneStats)
 import PeqNP.Streaming (streamingSolve, showStreamStats)
 import PeqNP.Diagonal (diagonalExperiment, showDiagonalResults, greedyLargest, greedySmallest, alwaysInclude, alwaysSkip, thresholdHalf, alternating)
 import PeqNP.FingerTree (fingerTreeSolve, showFTStats, measureDifficulty, showDifficultyProfile)
-import PeqNP.BitDecompose (analyzeCarry, showCarryProfile, bitLevelSolve, BitLevelStats(..), decomposeProblem, BitColumn(..), coupledBitSolve, showCoupledStats, untieRetieExperiment, showUntieRetie)
+import PeqNP.BitDecompose (analyzeCarry, showCarryProfile, bitLevelSolve, BitLevelStats(..), decomposeProblem, BitColumn(..), coupledBitSolve, showCoupledStats, untieRetieExperiment, showUntieRetie, interleavedSolve, showInterleavedStats)
 import PeqNP.UnifiedExperiments (unifiedAnalysis, showUnifiedTable)
 
 main :: IO ()
@@ -512,6 +512,28 @@ main = do
   putStrLn "  Survival rate = P(random subset hits target)."
   putStrLn "  If survival rate is 1/poly(n) → retie is easy."
   putStrLn "  If survival rate is 1/2^n → retie is as hard as brute force."
+  putStrLn ""
+
+  sectionHeader "31. INTERLEAVED: carry + coupling at EACH bit position"
+  putStrLn "  Process bit-by-bit, carrying coupling decisions forward."
+  putStrLn "  active(k) = weights decided at k with future bits remaining."
+  putStrLn "  State = carry × 2^active(k). If active is small → poly!"
+  putStrLn ""
+
+  putStrLn "  [3,7,5,2] target=10:"
+  putStr $ showInterleavedStats (interleavedSolve [3,7,5,2] 10)
+  putStrLn ""
+
+  putStrLn "  [1,2,4,8,16,32] target=21 (super-increasing):"
+  putStr $ showInterleavedStats (interleavedSolve [1,2,4,8,16,32] 21)
+  putStrLn ""
+
+  putStrLn "  [1,2,3,5,8,13] target=15 (fibonacci):"
+  putStr $ showInterleavedStats (interleavedSolve [1,2,3,5,8,13] 15)
+  putStrLn ""
+
+  putStrLn "  [100,200,400,800,1600] target=1000 (exponential weights):"
+  putStr $ showInterleavedStats (interleavedSolve [100,200,400,800,1600] 1000)
   putStrLn ""
 
   putStrLn "═══════════════════════════════════════════════════════════"
