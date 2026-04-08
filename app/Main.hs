@@ -26,7 +26,7 @@ import PeqNP.LazyTree (searchWithStats, showPruneStats)
 import PeqNP.Streaming (streamingSolve, showStreamStats)
 import PeqNP.Diagonal (diagonalExperiment, showDiagonalResults, greedyLargest, greedySmallest, alwaysInclude, alwaysSkip, thresholdHalf, alternating)
 import PeqNP.FingerTree (fingerTreeSolve, showFTStats, measureDifficulty, showDifficultyProfile)
-import PeqNP.BitDecompose (analyzeCarry, showCarryProfile, bitLevelSolve, BitLevelStats(..), decomposeProblem, BitColumn(..), coupledBitSolve, showCoupledStats, untieRetieExperiment, showUntieRetie, interleavedSolve, showInterleavedStats, showBasisSearch, showGF2Results, solveInTransformedBasis, showGF2SolverResult, analyzeRank, showRankAnalysis, recursiveGF2Solve, showRecursiveResult, RecursiveResult(..))
+import PeqNP.BitDecompose (analyzeCarry, showCarryProfile, bitLevelSolve, BitLevelStats(..), decomposeProblem, BitColumn(..), coupledBitSolve, showCoupledStats, untieRetieExperiment, showUntieRetie, interleavedSolve, showInterleavedStats, showBasisSearch, showGF2Results, solveInTransformedBasis, showGF2SolverResult, analyzeRank, showRankAnalysis, recursiveGF2Solve, showRecursiveResult, RecursiveResult(..), randomGF2Vote, showVoteResult)
 import PeqNP.UnifiedExperiments (unifiedAnalysis, showUnifiedTable)
 
 main :: IO ()
@@ -766,6 +766,31 @@ main = do
   putStrLn "  L0/n = level-0 corrections per element."
   putStrLn "  If L0/n stays CONSTANT → L0 = O(n) → POLYNOMIAL!"
   putStrLn "  If L0/n grows → L0 = super-linear → check rate."
+  putStrLn ""
+
+  sectionHeader "40. RANDOM GF(2) VOTE: probabilistic algorithm"
+  putStrLn "  Apply N random GF(2) transforms, solve each, majority vote."
+  putStrLn "  If P(false positive) < 0.5 for NO instances → BPP algorithm!"
+  putStrLn ""
+
+  let voteTrials = 50
+
+  putStrLn "  YES instances (should all say YES):"
+  putStr $ showVoteResult (randomGF2Vote voteTrials [3,5,7] 8)
+  putStr $ showVoteResult (randomGF2Vote voteTrials [1,2,3,5,8,13] 15)
+  putStr $ showVoteResult (randomGF2Vote voteTrials [3,5,6,7,9,10,11] 20)
+  putStrLn ""
+
+  putStrLn "  NO instances (THE KEY: what's the false positive rate?):"
+  putStr $ showVoteResult (randomGF2Vote voteTrials [3,5,7] 6)
+  putStr $ showVoteResult (randomGF2Vote voteTrials [3,5,7] 11)
+  putStr $ showVoteResult (randomGF2Vote voteTrials [1,2,3,5,8,13] 33)
+  putStr $ showVoteResult (randomGF2Vote voteTrials [3,5,6,7,9,10,11] 62)
+  putStr $ showVoteResult (randomGF2Vote voteTrials [1,2,4,8,16,32] 50)
+  putStrLn ""
+
+  putStrLn "  If ALL FP rates < 0.5 → majority vote always correct"
+  putStrLn "  → Subset Sum ∈ BPP → likely P = NP"
   putStrLn ""
 
   putStrLn "═══════════════════════════════════════════════════════════"

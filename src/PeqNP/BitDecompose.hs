@@ -48,6 +48,10 @@ module PeqNP.BitDecompose
   , RecursiveResult(..)
   , recursiveGF2Solve
   , showRecursiveResult
+    -- * RANDOM GF(2) VOTE: probabilistic algorithm
+  , randomGF2Vote
+  , VoteResult(..)
+  , showVoteResult
   ) where
 
 import qualified Data.Set as Set
@@ -1043,3 +1047,95 @@ showRecursiveResult rr = unlines $
        ++ " (" ++ show (length (filter (/= 0) ws)) ++ " non-zero)"
   | (i, ws) <- zip [(0::Int)..] (rrWeightsPerLevel rr)
   ]
+
+-- ═══════════════════════════════════════════════════════════
+-- RANDOM GF(2) VOTE: probabilistic algorithm
+-- ═══════════════════════════════════════════════════════════
+
+-- | Generate a "random" GF(2) column transform using a seed.
+-- Apply a sequence of column XOR operations determined by the seed.
+randomGF2Transform :: Int -> Int -> [(Int, [Int])]  -- seed, numCols -> operations
+randomGF2Transform seed numCols =
+  let -- Generate pseudo-random XOR operations
+      numOps = max 1 (numCols `div` 2)  -- apply numCols/2 random XORs
+      ops = take numOps $ generateOps seed numCols
+  in ops
+  where
+    generateOps s nc =
+      let (a, s1) = lcg s
+          (b, s2) = lcg s1
+          i = a `mod` nc
+          j = b `mod` nc
+          rest = generateOps s2 nc
+      in if i /= j then (i, [j]) : rest else rest
+
+    lcg s = let s' = (s * 1103515245 + 12345) `mod` (2^(31::Int))
+            in (abs s' `mod` 1000, s')
+
+-- | Transform weights using a random GF(2) transform, solve, check answer.
+solveWithRandomTransform :: Int -> [Int] -> Int -> Bool
+solveWithRandomTransform seed elems target =
+  let b = maxBits elems
+      mat = weightsToBitMatrix elems
+      ops = randomGF2Transform seed b
+      transMat = xorTransform mat ops
+      transWeights = map fromBits transMat
+      transTarget = fromBits (head (xorTransform [toBits b target] ops))
+      -- Solve transformed instance with standard DP
+      -- (NOT the broken interleaved solver — use actual DP on transformed weights)
+      transReachable = dpReachableLocal transWeights
+  in Set.member transTarget transReachable
+
+-- | Run N random GF(2) transforms and vote.
+-- For YES instances: all transforms should say YES (no false negatives possible
+-- since we use exact DP on transformed weights — but transformed target might not
+-- correspond correctly, so false negatives ARE possible).
+-- For NO instances: false positives are possible.
+-- Majority vote: if > half say NO → report NO.
+
+data VoteResult = VR
+  { vrElements     :: [Int]
+  , vrTarget       :: Int
+  , vrCorrectAnswer :: Bool
+  , vrNumTrials    :: Int
+  , vrYesVotes     :: Int
+  , vrNoVotes      :: Int
+  , vrMajorityAnswer :: Bool  -- majority vote result
+  , vrMajorityCorrect :: Bool
+  , vrFalsePositiveRate :: Double  -- for NO instances: fraction saying YES
+  } deriving (Show)
+
+randomGF2Vote :: Int -> [Int] -> Int -> VoteResult
+randomGF2Vote numTrials elems target =
+  let correctAnswer = Set.member target (dpReachableLocal elems)
+      votes = [solveWithRandomTransform seed elems target | seed <- [1..numTrials]]
+      yesVotes = length (filter id votes)
+      noVotes = numTrials - yesVotes
+      majorityAnswer = yesVotes > noVotes
+      fpRate = if correctAnswer
+               then 0  -- no false positives for YES instances
+               else fromIntegral yesVotes / fromIntegral numTrials
+  in VR
+    { vrElements     = elems
+    , vrTarget       = target
+    , vrCorrectAnswer = correctAnswer
+    , vrNumTrials    = numTrials
+    , vrYesVotes     = yesVotes
+    , vrNoVotes      = noVotes
+    , vrMajorityAnswer = majorityAnswer
+    , vrMajorityCorrect = majorityAnswer == correctAnswer
+    , vrFalsePositiveRate = fpRate
+    }
+
+showVoteResult :: VoteResult -> String
+showVoteResult vr = unlines
+  [ "  Correct: " ++ show (vrCorrectAnswer vr)
+     ++ "  Votes: YES=" ++ show (vrYesVotes vr) ++ " NO=" ++ show (vrNoVotes vr)
+     ++ "  Majority: " ++ show (vrMajorityAnswer vr)
+     ++ (if vrMajorityCorrect vr then " ✓" else " ✗ WRONG")
+     ++ (if not (vrCorrectAnswer vr)
+         then "  FP rate=" ++ show (roundTo'' 2 (vrFalsePositiveRate vr))
+         else "")
+  ]
+  where
+    roundTo'' n x = fromIntegral (round (x * 10^(n::Int)) :: Int) / 10^(n::Int)
