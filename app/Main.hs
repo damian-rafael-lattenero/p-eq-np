@@ -22,7 +22,7 @@ import PeqNP.NTT (evalProductAt, nttCoeffAt, modPow)
 import PeqNP.LLL (lllSolve, showLLLResult, density)
 import PeqNP.Topological (analyzeGaps, showGapAnalysis)
 import PeqNP.DensityMap (densitySweep, showDensitySweep)
-import PeqNP.Combined (combinedSolve, showCombinedResult)
+import PeqNP.Combined (combinedSolve, showCombinedResult, CombinedResult(..))
 import PeqNP.Relaxation (solveRelaxed, showRelaxed, RelaxedSolution(..))
 import PeqNP.Rounding (probabilisticSolve, showStats)
 import PeqNP.Landscape (buildLandscape, showLandscape, showHistogram, ProbLandscape(..))
@@ -863,6 +863,35 @@ main = do
         , ([3,5,6,7,9,10,11,13,14,15], 48)   -- dense
         ]
   mapM_ (\(ws, t) -> putStrLn $ showCombinedResult (combinedSolve ws t)) combinedTests
+  putStrLn ""
+
+  sectionHeader "46. DEAD ZONE HUNT: density ≈ 1"
+  putStrLn "  Critical regime: n ≈ log2(max_weight)."
+  putStrLn "  Testing with n=6,7,8 and weights ≈ 2^n."
+  putStrLn ""
+
+  -- Density ≈ 1: weights around 2^n, so n ≈ log2(max)
+  let criticalTests =
+        -- n=6, weights ≈ 64 → density ≈ 1.0
+        [ ([37, 41, 43, 47, 53, 59], 150)      -- NO
+        , ([37, 41, 43, 47, 53, 59], 137)      -- YES: 37+41+59
+        -- n=7, weights ≈ 128 → density ≈ 1.0
+        , ([97, 103, 107, 109, 113, 127, 131], 400)  -- NO
+        , ([97, 103, 107, 109, 113, 127, 131], 329)  -- YES
+        -- n=8, weights ≈ 256 → density ≈ 1.0
+        , ([197, 199, 211, 223, 227, 229, 233, 239], 1000) -- NO
+        , ([197, 199, 211, 223, 227, 229, 233, 239], 857)  -- YES
+        -- n=8, all primes near 256
+        , ([241, 251, 257, 263, 269, 271, 277, 281], 1300) -- NO
+        , ([241, 251, 257, 263, 269, 271, 277, 281], 1100) -- prob YES
+        ]
+
+  putStrLn "  n    density  DP      LLL  strm   ovlp  gap    method"
+  putStrLn $ "  " ++ replicate 65 '-'
+  mapM_ (\(ws, t) -> putStrLn $ showCombinedResult (combinedSolve ws t)) criticalTests
+  putStrLn ""
+
+  putStrLn "  DEAD ZONE = instances where method = 'DEAD ZONE'"
   putStrLn ""
 
   putStrLn "═══════════════════════════════════════════════════════════"
