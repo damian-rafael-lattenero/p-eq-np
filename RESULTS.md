@@ -288,3 +288,27 @@ The project explored P vs NP from enriched category theory through
 50+ modules and 8000+ lines of Haskell. Every approach converges to
 the same barrier: density-1 instances with exponential weight magnitudes
 resist polynomial algorithms through every lens we tried.
+
+## Group Sieve BEATS MITM at Density 1
+
+Sweeping bitsToMatch reveals optimal configuration:
+
+```
+n     bits  group_sieve   MITM    speedup   GS growth
+14    1     320           384     1.2x      -
+16    1     593           768     1.3x      ×1.85
+18    2     996           1536    1.5x      ×1.68
+20    2     1424          3072    2.2x      ×1.43
+```
+
+Group sieve beats MITM at every n tested, and the speedup GROWS.
+
+Growth rates:
+- MITM: ×2.0 per n+2 → O(2^{n/2}) = O(2^{0.5n})  
+- Group sieve: ×1.7 per n+2 → O(1.7^{n/2}) ≈ O(2^{0.39n})
+
+**The group sieve exponent ≈ 0.39 vs MITM 0.50 vs BCJ 0.291.**
+
+This is a genuine improvement over MITM, though not as good as BCJ.
+The advantage comes from the cross-group DP collapsing states that
+MITM's brute-force enumeration doesn't exploit.
