@@ -192,3 +192,26 @@ c_real = 2.92 ± 0.02 from n=20 to n=40. Does NOT grow.
 | Per-group brute force (groups of log n) | O(n²/log n) |
 | Cross-group DP (real states) | O(n^{2.92}) |
 | **Total** | **O(n^3)** |
+
+## CORRECTION: Test instances were NOT density 1
+
+Our "primes from 51" test instances have INCREASING density:
+```
+n=10:  density = 1.52  (near 1)
+n=20:  density = 2.77
+n=30:  density = 3.94
+n=40:  density = 5.00
+n=100: density = 10.75
+```
+
+The c=2.92 stabilization reflects that high-density Subset Sum is
+ALREADY KNOWN to be easy (Galil-Margalit 1991: O(n log n) for d > c√n).
+
+For TRUE density 1 (weights ≈ 2^n), the cross-group DP states would
+grow exponentially because the high-part sum range is O(2^n / 2^b),
+which is exponential.
+
+**The group sieve is an optimization for high-density instances,
+not a polynomial algorithm for all Subset Sum instances.**
+
+This does NOT prove P = NP.
