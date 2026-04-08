@@ -30,6 +30,7 @@ module PeqNP.Interference
   , GroupInfo(..)
   , groupSieve
   , showGroupSieveResult
+  , processGroup
   ) where
 
 import qualified Data.Set as Set
