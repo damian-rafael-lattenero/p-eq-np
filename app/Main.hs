@@ -8,6 +8,10 @@ import PeqNP.Comparison (compareApproaches, showComparison)
 import PeqNP.Quotient (quotientByMetadata, quotientSize, lookupTarget)
 import PeqNP.Functor (EnrichedFunctor(..), applyFunctor, modularFunctor, forgetfulFunctor)
 import PeqNP.BooleanReduction (subsetSumToSAT, evaluate, decisionPathToAssignment, showReduction)
+import PeqNP.FiniteMonoid (ZMod(..))
+import PeqNP.Search (searchMonoid, MonoidReport(..), SearchResult(..))
+import PeqNP.Impossibility (minDistinguishingModulus, MinSizeResult(..), scalingAnalysis, ScalingDataPoint(..))
+import PeqNP.Report (showMonoidReport, showScalingTable)
 
 main :: IO ()
 main = do
@@ -133,6 +137,49 @@ main = do
   putStrLn "  of the same problem. The functors between them preserve"
   putStrLn "  the answer. P=NP asks: does any of these views admit"
   putStrLn "  a polynomial-time algorithm?"
+  putStrLn ""
+
+  -- Systematic search on finite monoids
+  sectionHeader "8. Systematic functor search (ZMod k)"
+  putStrLn "  For a NO instance: [3,7,5,2] target 11 (no subset sums to 11)"
+  putStrLn ""
+
+  let noElements = [3, 7, 5, 2]
+      noTarget   = 11
+  let report3 = searchMonoid @(ZMod 3) "Z/3Z" noElements noTarget
+  putStrLn $ showMonoidReport report3
+  let report7 = searchMonoid @(ZMod 7) "Z/7Z" noElements noTarget
+  putStrLn $ showMonoidReport report7
+  let report11 = searchMonoid @(ZMod 11) "Z/11Z" noElements noTarget
+  putStrLn $ showMonoidReport report11
+
+  putStrLn "  Minimum distinguishing modulus search (k = 2..100):"
+  let minResult = minDistinguishingModulus noElements noTarget 100
+  putStrLn $ "    Distinct reachable sums: " ++ show (msrDistinctSums minResult)
+  putStrLn $ "    Min k that works:        " ++ show (msrMinModulus minResult)
+  putStrLn ""
+
+  -- Scaling experiment
+  sectionHeader "9. Scaling experiment: how does min k grow with n?"
+  putStrLn "  For hard NO instances with increasing n:"
+  putStrLn ""
+
+  -- Hand-crafted NO instances of increasing size
+  let hardInstances =
+        [ ([1, 2], 4)                                  -- n=2
+        , ([1, 2, 3], 7)                               -- n=3
+        , ([1, 2, 3, 5], 12)                           -- n=4
+        , ([1, 2, 3, 5, 8], 20)                        -- n=5
+        , ([1, 2, 3, 5, 8, 13], 33)                    -- n=6
+        , ([1, 2, 3, 5, 8, 13, 21], 54)                -- n=7
+        , ([1, 2, 3, 5, 8, 13, 21, 34], 88)            -- n=8
+        , ([2, 5, 11, 23, 47, 97, 193, 389, 769], 1537) -- n=9, powers-ish
+        ]
+  let scaling = scalingAnalysis hardInstances 500
+  putStr $ showScalingTable scaling
+  putStrLn ""
+  putStrLn "  If min k grows polynomially in n -> evidence for P = NP"
+  putStrLn "  If min k grows exponentially in n -> evidence for P /= NP"
   putStrLn ""
 
   putStrLn "═══════════════════════════════════════════════════════════"

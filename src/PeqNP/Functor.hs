@@ -3,52 +3,55 @@
 module PeqNP.Functor
   ( EnrichedFunctor(..)
   , applyFunctor
+  , fromHomomorphism
+  -- * Concrete functors
   , modularFunctor
+  , modularFunctorZMod
+  , withModulus
   , forgetfulFunctor
   , identityFunctor
   ) where
 
+import Data.Proxy (Proxy(..))
+import GHC.TypeNats (KnownNat, SomeNat(..), natVal, someNatVal)
+import Numeric.Natural (Natural)
+
 import PeqNP.EnrichedArrow (EnrichedArrow(..))
 import PeqNP.SubsetSum (Sum(..))
+import PeqNP.FiniteMonoid (ZMod(..))
+import PeqNP.Homomorphism (MonoidHom(..))
 
 -- | A functor between enriched categories that changes the enrichment monoid.
---
--- An EnrichedFunctor from (EnrichedArrow m) to (EnrichedArrow n):
---   - Maps metadata via a monoid homomorphism: mapMeta (a <> b) == mapMeta a <> mapMeta b
---   - Preserves the underlying computation (domain/codomain types unchanged)
 --
 -- THE P=NP QUESTION in this framework:
 -- Does there exist an EnrichedFunctor F : (EnrichedArrow Sum) → (EnrichedArrow M)
 -- where M is a FINITE monoid of polynomial size in n, such that
 -- F preserves the answer to "does any path reach target T"?
---
--- If yes: we've compressed the exponential hom-object to polynomial size.
--- If no for ALL such F: this gives evidence for P ≠ NP.
-
 data EnrichedFunctor m n = EF
   { functorName :: String
   , mapMeta     :: m -> n
-    -- ^ The underlying monoid homomorphism on metadata
   , mapArrow    :: forall a b. EnrichedArrow m a b -> EnrichedArrow n a b
-    -- ^ The full functor action on arrows
   }
 
 -- | Apply a functor to a list of arrows
 applyFunctor :: EnrichedFunctor m n -> [EnrichedArrow m a b] -> [EnrichedArrow n a b]
 applyFunctor ef = map (mapArrow ef)
 
--- | The modular functor: (Z, +, 0) → (Z/kZ, +, 0)
---
--- Maps Sum n → Sum (n mod k). This is a monoid homomorphism because
--- (a + b) mod k ≡ (a mod k + b mod k) mod k.
---
--- This is the "hash-based compression" from open question #1:
--- it collapses the infinite monoid Z to a finite one Z/kZ,
--- producing at most k equivalence classes.
---
--- TRADE-OFF: information is lost. Two paths with different sums
--- may map to the same class. The question is whether we can
--- choose k (or a more sophisticated monoid) to preserve the answer.
+-- | Lift a MonoidHom into an EnrichedFunctor
+fromHomomorphism :: MonoidHom m n -> EnrichedFunctor m n
+fromHomomorphism hom = EF
+  { functorName = homName hom
+  , mapMeta     = applyHom hom
+  , mapArrow    = \(EA m f) -> EA (applyHom hom m) f
+  }
+
+-- ═══════════════════════════════════════════════════════════
+-- Concrete functors
+-- ═══════════════════════════════════════════════════════════
+
+-- | Legacy modular functor mapping Sum → Sum (for backward compat).
+-- NOTE: This is NOT a true enriched functor because Sum's <> is plain +,
+-- not modular addition. Use modularFunctorZMod for the correct version.
 modularFunctor :: Int -> EnrichedFunctor Sum Sum
 modularFunctor k = EF
   { functorName = "mod " ++ show k
@@ -56,11 +59,30 @@ modularFunctor k = EF
   , mapArrow    = \(EA (Sum n) f) -> EA (Sum (n `mod` k)) f
   }
 
--- | The forgetful functor: strips all metadata.
+-- | Correct modular functor: Sum → ZMod k with proper modular arithmetic.
 --
--- This is the U in the Free ⊣ Forgetful adjunction.
--- Maps everything to the trivial monoid ().
--- ALL information is lost — this is the "maximally lossy" functor.
+-- This IS a true enriched functor because ZMod k's <> is modular addition:
+-- mapMeta (Sum a <> Sum b) = ZMod ((a+b) mod k)
+-- mapMeta (Sum a) <> mapMeta (Sum b) = ZMod (a mod k) <> ZMod (b mod k)
+--                                    = ZMod ((a mod k + b mod k) mod k)
+--                                    = ZMod ((a+b) mod k)  ✓
+modularFunctorZMod :: forall k. KnownNat k => EnrichedFunctor Sum (ZMod k)
+modularFunctorZMod =
+  let k' = fromIntegral (natVal (Proxy :: Proxy k))
+  in EF
+    { functorName = "mod " ++ show k'
+    , mapMeta     = \(Sum n) -> ZMod (n `mod` k')
+    , mapArrow    = \(EA (Sum n) f) -> EA (ZMod (n `mod` k')) f
+    }
+
+-- | Use a runtime Int as modulus, dispatching to the type-level version.
+-- This bridges runtime values and type-level naturals via someNatVal.
+withModulus :: Int -> (forall k. KnownNat k => EnrichedFunctor Sum (ZMod k) -> r) -> r
+withModulus k f =
+  case someNatVal (fromIntegral k :: Natural) of
+    SomeNat (_ :: Proxy k) -> f (modularFunctorZMod @k)
+
+-- | The forgetful functor: strips all metadata.
 forgetfulFunctor :: EnrichedFunctor Sum ()
 forgetfulFunctor = EF
   { functorName = "forgetful"

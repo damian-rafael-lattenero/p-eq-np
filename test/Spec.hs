@@ -11,8 +11,12 @@ import PeqNP.BruteForce (allPaths, solveBruteForce, Decision(..), extractInclude
 import PeqNP.DPSolver (solveDPAll)
 import PeqNP.Comparison (compareApproaches, ComparisonResult(..))
 import PeqNP.Quotient (quotientByMetadata, quotientSize, lookupTarget)
-import PeqNP.Functor (EnrichedFunctor(..), applyFunctor, modularFunctor, identityFunctor)
+import PeqNP.Functor (EnrichedFunctor(..), applyFunctor, modularFunctor, identityFunctor, withModulus)
 import PeqNP.BooleanReduction (subsetSumToSAT, evaluate, decisionPathToAssignment)
+import PeqNP.FiniteMonoid (ZMod(..), BoolOr(..))
+import qualified PeqNP.FiniteMonoid as FM
+import PeqNP.Search (searchMonoid, MonoidReport(..))
+import PeqNP.Impossibility (minDistinguishingModulus, MinSizeResult(..))
 
 import qualified Data.Map.Strict as Map
 
@@ -29,6 +33,9 @@ tests = testGroup "P=NP Enriched Category"
   , dpComparisonTests
   , quotientFunctorTests
   , booleanReductionTests
+  , finiteMonoidTests
+  , correctedFunctorTests
+  , preservationTests
   ]
 
 -- ═══════════════════════════════════════════════════════════
@@ -246,6 +253,97 @@ booleanReductionTests = testGroup "Boolean Reduction (SubsetSum <-> SAT)"
 allBoolMasks :: Int -> [[Bool]]
 allBoolMasks 0 = [[]]
 allBoolMasks n = [b : rest | b <- [True, False], rest <- allBoolMasks (n - 1)]
+
+-- ═══════════════════════════════════════════════════════════
+-- Group 7: Finite monoid laws
+-- ═══════════════════════════════════════════════════════════
+
+finiteMonoidTests :: TestTree
+finiteMonoidTests = testGroup "Finite monoid laws"
+  [ testProperty "ZMod 7: associativity" $
+      \(a, b, c) ->
+        let za = ZMod a :: ZMod 7
+            zb = ZMod b :: ZMod 7
+            zc = ZMod c :: ZMod 7
+        in (za <> zb) <> zc === za <> (zb <> zc)
+
+  , testProperty "ZMod 7: identity" $
+      \a -> let za = ZMod (a `mod` 7) :: ZMod 7
+            in (mempty <> za === za) .&&. (za <> mempty === za)
+
+  , testProperty "ZMod k: closure (result < k)" $
+      forAll (choose (2, 50)) $ \k ->
+        \(Positive a, Positive b) ->
+          withModulus k $ \ef ->
+            let result = mapMeta ef (Sum a) <> mapMeta ef (Sum b)
+            in getZMod result >= 0 .&&. getZMod result < k
+
+  , testProperty "BoolOr: identity is False" $
+      (mempty :: BoolOr) === BoolOr False
+
+  , testProperty "BoolOr: True absorbs" $
+      \b -> BoolOr True <> BoolOr b === BoolOr True
+
+  , testProperty "BoolOr: elements has 2 elements" $
+      length (FM.elements :: [BoolOr]) === 2
+  ]
+
+-- ═══════════════════════════════════════════════════════════
+-- Group 8: Corrected functor (ZMod k IS a true homomorphism)
+-- ═══════════════════════════════════════════════════════════
+
+correctedFunctorTests :: TestTree
+correctedFunctorTests = testGroup "Corrected enriched functor (ZMod k)"
+  [ -- THE KEY FIX: with proper ZMod k, the homomorphism property holds exactly
+    testProperty "ZMod k: h(a+b) == h(a) <> h(b) (TRUE homomorphism)" $
+      forAll (choose (2, 50)) $ \k ->
+        \(Positive a, Positive b) ->
+          withModulus k $ \ef ->
+            mapMeta ef (Sum a <> Sum b) === (mapMeta ef (Sum a) <> mapMeta ef (Sum b))
+
+  , testProperty "ZMod k: functor preserves composition metadata" $
+      forAll (choose (2, 50)) $ \k ->
+        \(Positive a, Positive b) ->
+          withModulus k $ \ef ->
+            let composed = include a ⊕ include b
+                mappedComposed = mapArrow ef composed
+                composedMapped = mapArrow ef (include a) ⊕ mapArrow ef (include b)
+            in metadata mappedComposed === metadata composedMapped
+
+  , testProperty "ZMod k: maps identity to identity" $
+      forAll (choose (2, 50)) $ \k ->
+        withModulus k $ \ef ->
+          mapMeta ef (mempty :: Sum) === mempty
+  ]
+
+-- ═══════════════════════════════════════════════════════════
+-- Group 9: Answer preservation
+-- ═══════════════════════════════════════════════════════════
+
+preservationTests :: TestTree
+preservationTests = testGroup "Answer preservation"
+  [ -- YES instances: every homomorphism preserves the answer
+    testProperty "YES instances: all homomorphisms preserve" $
+      forAll genSubsetSumInstance $ \(xs, target) ->
+        not (null (solveBruteForce xs target)) ==>
+          let report = searchMonoid @(ZMod 7) "Z/7Z" xs target
+          in mrAnyPreserve report === True
+
+  , testProperty "ZMod k with k > max_sum always preserves" $
+      forAll genSmallSubsetSumInstance $ \(xs, target) ->
+        let maxSum = sum (map abs xs) + 1
+        in maxSum > 1 ==>
+             let result = minDistinguishingModulus xs target (maxSum + 10)
+             in case msrMinModulus result of
+                  Just k  -> k <= maxSum + 1
+                  Nothing -> msrTargetReachable result
+
+  , testProperty "[3,7,5,2] target 11 (NO): min modulus is 5" $
+      msrMinModulus (minDistinguishingModulus [3,7,5,2] 11 100) === Just 5
+
+  , testProperty "[3,7,5,2] target 10 (YES): any modulus works" $
+      msrMinModulus (minDistinguishingModulus [3,7,5,2] 10 100) === Just 1
+  ]
 
 -- ═══════════════════════════════════════════════════════════
 -- Generators
