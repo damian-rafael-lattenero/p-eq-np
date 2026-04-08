@@ -45,6 +45,7 @@ library
     PeqNP.MITM
     PeqNP.OptimalGF2
     PeqNP.CombinedPipeline
+    PeqNP.Interference
     PeqNP.KuperbergSieve
     PeqNP.FingerTree
     PeqNP.UnifiedExperiments
