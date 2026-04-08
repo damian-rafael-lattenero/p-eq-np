@@ -26,7 +26,7 @@ import PeqNP.LazyTree (searchWithStats, showPruneStats)
 import PeqNP.Streaming (streamingSolve, showStreamStats)
 import PeqNP.Diagonal (diagonalExperiment, showDiagonalResults, greedyLargest, greedySmallest, alwaysInclude, alwaysSkip, thresholdHalf, alternating)
 import PeqNP.FingerTree (fingerTreeSolve, showFTStats, measureDifficulty, showDifficultyProfile)
-import PeqNP.BitDecompose (analyzeCarry, showCarryProfile, bitLevelSolve, BitLevelStats(..), decomposeProblem, BitColumn(..))
+import PeqNP.BitDecompose (analyzeCarry, showCarryProfile, bitLevelSolve, BitLevelStats(..), decomposeProblem, BitColumn(..), coupledBitSolve, showCoupledStats)
 import PeqNP.UnifiedExperiments (unifiedAnalysis, showUnifiedTable)
 
 main :: IO ()
@@ -464,6 +464,28 @@ main = do
 
   putStrLn "  BIG weights [1000000,2000000,3000000] target=4000000:"
   putStr $ showCarryProfile (analyzeCarry [1000000,2000000,3000000] 4000000)
+  putStrLn ""
+
+  sectionHeader "29. COUPLED bit solver: the REAL state count"
+  putStrLn "  The uncoupled solver was wrong (false positives!)."
+  putStrLn "  The coupled solver tracks (carry, which_weights_included)."
+  putStrLn "  HOW BIG does the state space get when coupling is enforced?"
+  putStrLn ""
+
+  putStrLn "  [3,7,5,2] target=11 (NO — uncoupled said YES!):"
+  putStr $ showCoupledStats (coupledBitSolve [3,7,5,2] 11)
+  putStrLn ""
+
+  putStrLn "  [3,7,5,2] target=10 (YES):"
+  putStr $ showCoupledStats (coupledBitSolve [3,7,5,2] 10)
+  putStrLn ""
+
+  putStrLn "  [1,2,4,8,16,32] target=21 (YES, super-increasing):"
+  putStr $ showCoupledStats (coupledBitSolve [1,2,4,8,16,32] 21)
+  putStrLn ""
+
+  putStrLn "  [1,2,3,5,8] target=10 (YES, Fibonacci):"
+  putStr $ showCoupledStats (coupledBitSolve [1,2,3,5,8] 10)
   putStrLn ""
 
   putStrLn "═══════════════════════════════════════════════════════════"

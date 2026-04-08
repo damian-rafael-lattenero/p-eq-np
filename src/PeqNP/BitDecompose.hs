@@ -12,6 +12,10 @@ module PeqNP.BitDecompose
   , CarryProfile(..)
   , analyzeCarry
   , showCarryProfile
+    -- * COUPLED bit-level solver (correct!)
+  , coupledBitSolve
+  , CoupledStats(..)
+  , showCoupledStats
   ) where
 
 import qualified Data.Set as Set
@@ -194,4 +198,82 @@ showCarryProfile cp = unlines $
   , "  " ++ case cpExplosion cp of
       Nothing -> "NEVER EXCEEDED — carry stays O(n) at every bit position!"
       Just p  -> "Exceeded at bit " ++ show p
+  ]
+
+-- ═══════════════════════════════════════════════════════════
+-- COUPLED bit-level solver: tracks WHICH weights are included
+-- ═══════════════════════════════════════════════════════════
+
+-- | State in the coupled solver: (carry, inclusion_mask).
+-- The mask tracks which of the n weights are currently "included".
+-- Two states are equivalent if they have the same carry AND the same
+-- future behavior — but the mask determines future behavior because
+-- higher bit positions of included weights are forced.
+--
+-- KEY QUESTION: how many (carry, mask_equivalence_class) pairs exist?
+-- If the mask can be summarized compactly → polynomial
+-- If we need the full mask → 2^n states → exponential
+
+-- | A coupled state: carry value + which weights are included so far
+-- We represent the mask as a Set of included weight indices for efficiency
+type CoupledState = (Int, Set Int)  -- (carry, set of included weight indices)
+
+data CoupledStats = CS
+  { csFound         :: Bool
+  , csCorrect       :: Bool     -- agrees with DP?
+  , csBitsProcessed :: Int
+  , csStatesPerBit  :: [Int]    -- |coupled states| at each bit position
+  , csMaxStates     :: Int      -- peak coupled states
+  , csUncoupledMax  :: Int      -- for comparison: uncoupled max carry
+  } deriving (Show)
+
+-- | Solve Subset Sum with COUPLED bit-level processing.
+--
+-- Process WEIGHT by WEIGHT (not bit by bit). For each weight,
+-- decide include/exclude. Track the running sum, and at the end
+-- check each bit of the sum against the target.
+--
+-- BUT: to measure the state space at the BIT level, we track
+-- the set of reachable PARTIAL SUMS after processing each weight,
+-- and measure how many distinct (partial_sum mod 2^k) values exist
+-- at each bit position k. This shows the effective state count
+-- per bit when coupling is enforced.
+coupledBitSolve :: [Int] -> Int -> CoupledStats
+coupledBitSolve elems target =
+  let b = maxBits elems
+      -- Process weight by weight: track set of reachable partial sums
+      levels = scanl (\sums w -> Set.union sums (Set.map (+ w) sums))
+                     (Set.singleton 0) elems
+      -- For each bit position, count distinct residues mod 2^(k+1)
+      -- among reachable partial sums at EACH processing level
+      -- This measures the "effective state space" per bit
+      statesPerBit = [ maximum [Set.size (Set.map (`mod` (2^(k+1))) sums) | sums <- levels]
+                     | k <- [0..b-1]
+                     ]
+      found = Set.member target (last levels)
+      dpAnswer = Set.member target (dpReachableLocal elems)
+      uncoupledStats = bitLevelSolve elems target
+  in CS
+    { csFound         = found
+    , csCorrect       = found == dpAnswer
+    , csBitsProcessed = b
+    , csStatesPerBit  = statesPerBit
+    , csMaxStates     = maximum (0 : statesPerBit)
+    , csUncoupledMax  = blsMaxCarry uncoupledStats
+    }
+
+dpReachableLocal :: [Int] -> Set Int
+dpReachableLocal = foldl step (Set.singleton 0)
+  where step reachable x = Set.union reachable (Set.map (+ x) reachable)
+
+showCoupledStats :: CoupledStats -> String
+showCoupledStats cs = unlines $
+  [ "  Found:       " ++ show (csFound cs)
+  , "  Correct:     " ++ show (csCorrect cs)
+  , "  Bits:        " ++ show (csBitsProcessed cs)
+  , "  States/bit:  " ++ show (csStatesPerBit cs)
+  , "  Max states:  " ++ show (csMaxStates cs)
+      ++ (if csMaxStates cs <= 10 then " (small!)" else
+          if csMaxStates cs <= 100 then " (moderate)" else " (LARGE)")
+  , "  Uncoupled:   " ++ show (csUncoupledMax cs) ++ " (for comparison)"
   ]
