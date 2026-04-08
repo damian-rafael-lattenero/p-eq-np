@@ -43,29 +43,28 @@ main = do
 
   putStrLn ""
 
-  -- Part 3: Best of ALL methods
-  putStrLn "--- BEST OF ALL METHODS ---"
-  putStrLn "  n     2-level  4-way    rep      MITM     winner   ratio"
-  putStrLn $ "  " ++ replicate 60 '-'
+  -- Part 3: Best of ALL methods including BCJ-style representations
+  putStrLn "--- BEST OF ALL METHODS (including BCJ representations) ---"
+  putStrLn "  n     2-level  4-way    repBCJ4  repBCJ8  MITM     best   ratio"
+  putStrLn $ "  " ++ replicate 70 '-'
 
   mapM_ (\n -> do
     let (ws, t) = mkDensity1 n
         mitm = 3 * 2 ^ (n `div` 2) :: Int
         w2 = srWork (multiLevelSolve 2 ws t)
-        wr = srWork (multiLevelRepSolve 2 8 ws t)
         w4 = srWork (fourWayRepSolve 4 4 ws t)
-        best = minimum [w2, wr, w4]
-        winner | best == w2 = "2-level"
-               | best == wr = "rep-M8"
-               | otherwise  = "4-way"
+        wR4 = srWork (repFourWaySolve 4 ws t)
+        wR8 = srWork (repFourWaySolve 8 ws t)
+        allW = [(w2,"2-lvl"), (w4,"4-way"), (wR4,"rBCJ4"), (wR8,"rBCJ8")]
+        (best, winner) = foldl1 (\a b -> if fst a <= fst b then a else b) allW
         ratio = fromIntegral mitm / fromIntegral (max 1 best) :: Double
+        ok = all srCorrect [multiLevelSolve 2 ws t, repFourWaySolve 4 ws t, repFourWaySolve 8 ws t]
     putStrLn $ "  " ++ padR 8 (show n)
-      ++ padR 9 (show w2)
-      ++ padR 9 (show w4)
-      ++ padR 9 (show wr)
-      ++ padR 9 (show mitm)
-      ++ padR 9 winner
-      ++ show (roundTo 2 ratio)
+      ++ padR 9 (show w2) ++ padR 9 (show w4)
+      ++ padR 9 (show wR4) ++ padR 9 (show wR8)
+      ++ padR 9 (show mitm) ++ padR 7 winner
+      ++ padR 8 (show (roundTo 1 ratio))
+      ++ (if ok then "✓" else "✗")
     ) [8, 10, 12, 14, 16, 18, 20, 22, 24]
 
   putStrLn ""

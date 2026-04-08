@@ -6,6 +6,7 @@ module PeqNP.MultiLevelSieve
     -- * With representations
   , multiLevelRepSolve
   , fourWayRepSolve
+  , repFourWaySolve
     -- * Pruned group sieve (inner level)
   , prunedGroupSums
     -- * Benchmarking
@@ -421,3 +422,56 @@ filterRange lo hi s =
   let (_, geqLo) = Set.split (lo - 1) s   -- elements ≥ lo
       (leqHi, _) = Set.split (hi + 1) geqLo  -- elements ≤ hi
   in leqHi
+
+-- ═══════════════════════════════════════════════════════════
+-- REPRESENTATIONS: BCJ technique adapted to group sieve
+-- ═══════════════════════════════════════════════════════════
+
+-- | BCJ-style representations with group sieve.
+-- Fix modulus M and try each residue r = 0..M-1:
+--   Left half sum ≡ r (mod M), right half sum ≡ (T-r) (mod M).
+-- Each residue gives an EXACT modular target to inner merges.
+-- Inner merge uses hash-bucket lookup: O(|S1| × |S2|/M) per residue.
+-- Total: M × O(|S1| × |S2|/M) = O(|S1| × |S2|) same...
+-- BUT: combined with group sieve pruning at inner level, it's better.
+repFourWaySolve :: Int -> [Int] -> Int -> SolveResult
+repFourWaySolve modRep weights target =
+  let n = length weights
+      q = n `div` 4
+      (q1, rest1) = splitAt q weights
+      (q2, rest2) = splitAt q rest1
+      (q3, q4)    = splitAt q rest2
+      -- Quarter sums (brute force — they're 2^{n/4} each)
+      s1 = bruteForceDP q1; s2 = bruteForceDP q2
+      s3 = bruteForceDP q3; s4 = bruteForceDP q4
+      m = max 2 modRep
+      -- Bucket each quarter's sums by residue mod M (precompute once)
+      b2 = Map.fromListWith (++) [(s `mod` m, [s]) | s <- Set.toList s2]
+      b4 = Map.fromListWith (++) [(s `mod` m, [s]) | s <- Set.toList s4]
+      tMod = target `mod` m
+      -- Try each residue r: leftSum ≡ r mod M, rightSum ≡ (T-r) mod M
+      (found, work) = go 0 0
+        where
+          go r w | r >= m = (False, w)
+          go r w =
+            let -- Left: for each a ∈ S1, grab b from bucket (r-a) mod M in S2
+                leftSums = Set.fromList
+                  [ a + b'
+                  | a <- Set.toList s1
+                  , b' <- Map.findWithDefault [] ((r - a `mod` m) `mod` m) b2
+                  ]
+                -- Right: for each c ∈ S3, grab d from bucket ((tMod-r)-c) mod M in S4
+                rr = (tMod - r) `mod` m
+                rightSums = Set.fromList
+                  [ c + d'
+                  | c <- Set.toList s3
+                  , d' <- Map.findWithDefault [] ((rr - c `mod` m) `mod` m) b4
+                  ]
+                -- Check match
+                hit = any (\l -> Set.member (target - l) rightSums) (Set.toList leftSums)
+                stepW = Set.size leftSums + Set.size rightSums
+            in if hit then (True, w + stepW)
+               else go (r + 1) (w + stepW)
+      dpAnswer = Set.member target (bruteForceDP weights)
+      innerWork = Set.size s1 + Set.size s2 + Set.size s3 + Set.size s4
+  in SR found (found == dpAnswer) (innerWork + work) 2 0 0
