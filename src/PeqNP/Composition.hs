@@ -1,5 +1,6 @@
 module PeqNP.Composition where
 
+import PeqNP.EnrichedCategory (EnrichedCategory(eid, (|.|)))
 import PeqNP.EnrichedArrow
 
 -- | The enriched composition operator.

@@ -12,8 +12,15 @@ library
     PeqNP.EnrichedArrow
     PeqNP.SubsetSum
     PeqNP.Composition
+    PeqNP.BruteForce
+    PeqNP.DPSolver
+    PeqNP.Comparison
+    PeqNP.Quotient
+    PeqNP.Functor
+    PeqNP.BooleanReduction
   build-depends:
-    base >= 4.21 && < 5
+    base >= 4.21 && < 5,
+    containers >= 0.7
   hs-source-dirs:   src
   default-language:  GHC2024
   ghc-options:       -Wall -Wcompat
@@ -31,6 +38,9 @@ test-suite p-eq-np-test
   main-is:          Spec.hs
   build-depends:
     base >= 4.21 && < 5,
-    p-eq-np
+    p-eq-np,
+    containers >= 0.7,
+    tasty >= 1.5,
+    tasty-quickcheck >= 0.11
   hs-source-dirs:   test
   default-language:  GHC2024

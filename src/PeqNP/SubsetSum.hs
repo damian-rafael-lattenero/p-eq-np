@@ -1,7 +1,6 @@
 module PeqNP.SubsetSum where
 
 import PeqNP.EnrichedArrow
-import PeqNP.Composition
 
 -- | For Subset Sum, our metadata monoid is (Sum Int) — additive integers.
 --
@@ -26,14 +25,14 @@ data DecisionState = DS
 -- | Decision: include the next element
 include :: Int -> EnrichedArrow Sum DecisionState DecisionState
 include x = enrich (Sum x) $ \ds -> ds
-  { remaining = tail (remaining ds)
+  { remaining = drop 1 (remaining ds)
   , included  = x : included ds
   }
 
 -- | Decision: skip the next element
 skip :: Int -> EnrichedArrow Sum DecisionState DecisionState
 skip _x = enrich (Sum 0) $ \ds -> ds
-  { remaining = tail (remaining ds)
+  { remaining = drop 1 (remaining ds)
   }
 
 -- | Check if an enriched path has reached the target sum
