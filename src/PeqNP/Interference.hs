@@ -13,6 +13,10 @@ module PeqNP.Interference
     -- * Scaling analysis
   , interferenceScaling
   , showInterferenceScaling
+    -- * CRT multi-prime interference
+  , multiPrimeTest
+  , MultiPrimeResult(..)
+  , showMultiPrimeResult
   ) where
 
 import qualified Data.Set as Set
@@ -168,3 +172,76 @@ showInterferenceScaling results = unlines $
   where
     padR n s = s ++ replicate (max 0 (n - length s)) ' '
     roundTo n x = fromIntegral (round (x * 10^(n::Int)) :: Int) / 10^(n::Int)
+
+-- ═══════════════════════════════════════════════════════════
+-- CRT MULTI-PRIME INTERFERENCE
+-- ═══════════════════════════════════════════════════════════
+
+-- | Multi-prime interference: use MULTIPLE small primes q₁, q₂, ...
+-- and combine results via CRT logic.
+--
+-- For each prime qᵢ, compute [x^T] g(x) mod aliasing at qᵢ.
+-- A TRUE nonzero coefficient is nonzero in ALL DFTs.
+-- A FALSE positive (aliased nonzero) at prime qᵢ has probability ≈ D/qᵢ
+-- where D = number of nonzero coefficients at positions ≡ T mod qᵢ.
+--
+-- With k independent primes: P(all give false positive) ≈ Π(Dᵢ/qᵢ).
+-- If Π qᵢ > total number of coefficients → P(false positive) < 1 → EXACT.
+--
+-- COST: O(n × Σ qᵢ). With k = O(log n) primes of size O(n) each:
+-- O(n × n × log n) = O(n² log n). For density 1: DP = O(n × 2ⁿ).
+-- If this works → O(n² log n) << O(n × 2ⁿ) → POLYNOMIAL!
+
+data MultiPrimeResult = MPR
+  { mprWeights      :: [Int]
+  , mprTarget       :: Int
+  , mprPrimes       :: [Int]       -- primes used
+  , mprCoeffs       :: [Double]    -- coefficient estimate per prime
+  , mprAllNonzero   :: Bool        -- ALL primes say nonzero?
+  , mprAnyZero      :: Bool        -- ANY prime says zero?
+  , mprVerdict      :: Bool        -- our answer: allNonzero
+  , mprCorrect      :: Bool        -- agrees with DP?
+  , mprTotalWork    :: Int         -- n × Σ qᵢ
+  , mprDPWork       :: Int         -- DP distinct sums
+  } deriving (Show)
+
+multiPrimeTest :: [Int] -> Int -> [Int] -> MultiPrimeResult
+multiPrimeTest weights target primes =
+  let results = [interferenceExtract q weights target | q <- primes]
+      coeffs = map irCoeffEstimate results
+      -- A coefficient is "nonzero" if estimate > 0.5
+      nonzeros = map (> 0.5) coeffs
+      allNZ = and nonzeros
+      anyZ = any not nonzeros
+      -- Verdict: say YES only if ALL primes agree it's nonzero
+      -- (conservative: if ANY says zero, we say NO)
+      verdict = allNZ
+      -- Ground truth
+      dpAnswer = Set.member target (dpReachable weights)
+      n = length weights
+      totalWork = n * sum primes
+      dpWork = Set.size (dpReachable weights)
+  in MPR
+    { mprWeights    = weights
+    , mprTarget     = target
+    , mprPrimes     = primes
+    , mprCoeffs     = coeffs
+    , mprAllNonzero = allNZ
+    , mprAnyZero    = anyZ
+    , mprVerdict    = verdict
+    , mprCorrect    = verdict == dpAnswer
+    , mprTotalWork  = totalWork
+    , mprDPWork     = dpWork
+    }
+
+showMultiPrimeResult :: MultiPrimeResult -> String
+showMultiPrimeResult mpr = unlines
+  [ "  Primes: " ++ show (mprPrimes mpr)
+  , "  Coefficients: " ++ show (map (roundTo 2) (mprCoeffs mpr))
+  , "  Per-prime nonzero: " ++ show (map (> 0.5) (mprCoeffs mpr))
+  , "  Verdict: " ++ (if mprVerdict mpr then "YES" else "NO")
+      ++ "  Correct: " ++ show (mprCorrect mpr)
+  , "  Work: " ++ show (mprTotalWork mpr) ++ " (DP: " ++ show (mprDPWork mpr) ++ ")"
+  , "  Speedup: " ++ show (roundTo 1 (fromIntegral (mprDPWork mpr) / fromIntegral (max 1 (mprTotalWork mpr)))) ++ "x"
+  ]
+  where roundTo n x = fromIntegral (round (x * 10^(n::Int)) :: Int) / 10^(n::Int)
