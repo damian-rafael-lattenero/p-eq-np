@@ -35,6 +35,9 @@ library
     PeqNP.Relaxation
     PeqNP.Rounding
     PeqNP.Landscape
+    PeqNP.LazyTree
+    PeqNP.Streaming
+    PeqNP.Diagonal
   build-depends:
     base >= 4.21 && < 5,
     containers >= 0.7

@@ -26,6 +26,9 @@ import PeqNP.PolyQuotient (buildProductMod, polyModHasCoeff, minPreservingQ)
 import PeqNP.NTT (evalProductAt)
 import PeqNP.Relaxation (solveRelaxed, RelaxedSolution(..))
 import PeqNP.Landscape (buildLandscape, ProbLandscape(..))
+import PeqNP.LazyTree (searchWithStats, PruneStats(..))
+import PeqNP.Streaming (streamingSolve, StreamStats(..))
+import PeqNP.Diagonal (diagonalExperiment, DiagonalResult(..), greedyLargest, greedySmallest, thresholdHalf)
 
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -51,6 +54,9 @@ tests = testGroup "P=NP Enriched Category"
   , variableOrderingTests
   , polynomialTests
   , probabilisticTests
+  , lazyTreeTests
+  , streamingTests
+  , diagonalTests
   ]
 
 -- ═══════════════════════════════════════════════════════════
@@ -506,6 +512,67 @@ probabilisticTests = testGroup "Probabilistic approach"
   , testProperty "Landscape: P(hit) > 0 for easy YES instances" $
       -- [5,5] target=5: LP gives [1,0] → rounding always hits
       plTargetProb (buildLandscape 100 [5, 5] 5) > 0
+  ]
+
+-- ═══════════════════════════════════════════════════════════
+-- Group 15: Lazy tree pruning
+-- ═══════════════════════════════════════════════════════════
+
+lazyTreeTests :: TestTree
+lazyTreeTests = testGroup "Lazy tree pruning"
+  [ testProperty "finds correct solutions (YES instances)" $
+      forAll genSubsetSumInstance $ \(xs, target) ->
+        not (null xs) ==>
+          let ps = searchWithStats xs target
+              hasSolution = not (null (solveBruteForce xs target))
+          in (psSolution ps /= Nothing) === hasSolution
+
+  , testProperty "[3,7,5,2] target=10 finds solution" $
+      psSolution (searchWithStats [3,7,5,2] 10) /= Nothing
+  ]
+
+-- ═══════════════════════════════════════════════════════════
+-- Group 16: Streaming solver
+-- ═══════════════════════════════════════════════════════════
+
+streamingTests :: TestTree
+streamingTests = testGroup "Streaming solver"
+  [ testProperty "agrees with brute force" $
+      forAll genSubsetSumInstance $ \(xs, target) ->
+        not (null xs) ==>
+          let hasBF = not (null (solveBruteForce xs target))
+          in stFound (streamingSolve xs target) === hasBF
+
+  , testProperty "peak live sums <= DP distinct sums" $
+      forAll genSmallSubsetSumInstance $ \(xs, target) ->
+        not (null xs) ==>
+          stMaxLive (streamingSolve xs target) <= Set.size (dpReachable xs)
+
+  , testProperty "[3,7,5,2] target=10 found" $
+      stFound (streamingSolve [3,7,5,2] 10) === True
+  ]
+
+-- ═══════════════════════════════════════════════════════════
+-- Group 17: Diagonal argument
+-- ═══════════════════════════════════════════════════════════
+
+diagonalTests :: TestTree
+diagonalTests = testGroup "Diagonal argument"
+  [ testProperty "greedy-largest is defeated" $
+      case diagonalExperiment [greedyLargest] of
+        [r] -> drDefeatedAtN r /= Nothing
+        _   -> False
+
+  , testProperty "all simple strategies defeated at n <= 12" $
+      let results = diagonalExperiment [greedyLargest, greedySmallest, thresholdHalf]
+      in all (\r -> drDefeatedAtN r /= Nothing) results
+
+  , testProperty "counterexamples are valid" $
+      let results = diagonalExperiment [greedyLargest, greedySmallest]
+      in all (\r -> case drCounterexample r of
+                Nothing -> True  -- not defeated = ok
+                Just (es, t, ans) -> (Set.member t (dpReachable es)) == ans
+             ) results
   ]
 
 -- ═══════════════════════════════════════════════════════════

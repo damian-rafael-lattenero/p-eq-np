@@ -22,6 +22,9 @@ import PeqNP.NTT (evalProductAt, nttCoeffAt)
 import PeqNP.Relaxation (solveRelaxed, showRelaxed, RelaxedSolution(..))
 import PeqNP.Rounding (probabilisticSolve, showStats)
 import PeqNP.Landscape (buildLandscape, showLandscape, showHistogram, ProbLandscape(..))
+import PeqNP.LazyTree (searchWithStats, showPruneStats)
+import PeqNP.Streaming (streamingSolve, showStreamStats)
+import PeqNP.Diagonal (diagonalExperiment, showDiagonalResults, greedyLargest, greedySmallest, alwaysInclude, alwaysSkip, thresholdHalf, alternating)
 
 main :: IO ()
 main = do
@@ -350,6 +353,46 @@ main = do
   putStrLn " P(hit) determines whether randomized rounding gives a"
   putStrLn " polynomial-time algorithm. If P(hit) >= 1/poly(n) for"
   putStrLn " all YES instances → Subset Sum in BPP → likely P = NP."
+  putStrLn "═══════════════════════════════════════════════════════════"
+  putStrLn ""
+
+  -- Phase I: Navigation, pruning, and diagonalization
+  sectionHeader "22. Lazy tree with branch-and-bound pruning"
+  putStrLn "  [3,7,5,2] target=10 (YES instance):"
+  putStr $ showPruneStats (searchWithStats [3,7,5,2] 10)
+  putStrLn ""
+  putStrLn "  [1,2,3,5,8,13,21] target=54 (NO — sum+1):"
+  putStr $ showPruneStats (searchWithStats [1,2,3,5,8,13,21] 54)
+  putStrLn ""
+  putStrLn "  [1,2,3,5,8,13,21] target=30 (YES):"
+  putStr $ showPruneStats (searchWithStats [1,2,3,5,8,13,21] 30)
+  putStrLn ""
+
+  sectionHeader "23. Streaming solver (bubbling soda)"
+  putStrLn "  [3,7,5,2] target=10:"
+  putStr $ showStreamStats (streamingSolve [3,7,5,2] 10)
+  putStrLn ""
+  putStrLn "  [1,2,3,5,8,13] target=15:"
+  putStr $ showStreamStats (streamingSolve [1,2,3,5,8,13] 15)
+  putStrLn ""
+
+  sectionHeader "24. Diagonal argument: defeating strategies"
+  let strategies = [greedyLargest, greedySmallest, alwaysInclude, alwaysSkip, thresholdHalf, alternating]
+  putStr $ showDiagonalResults (diagonalExperiment strategies)
+  putStrLn ""
+  putStrLn "  Every simple strategy is defeated at small n."
+  putStrLn "  The question: does n_defeat grow with strategy complexity?"
+  putStrLn ""
+
+  putStrLn "═══════════════════════════════════════════════════════════"
+  putStrLn " PROJECT SUMMARY (Phases A-I)"
+  putStrLn " A-C: Enriched categories, BF, DP, SAT connection"
+  putStrLn " D: Monoid homomorphisms → pigeonhole barrier"
+  putStrLn " F: Myhill-Nerode, reachability → same barrier"
+  putStrLn " G: Polynomial ring → no improvement over ZMod"
+  putStrLn " H: LP relaxation → integrality gap"
+  putStrLn " I: Lazy pruning, streaming, diagonalization"
+  putStrLn " All roads lead to the same invariant: distinct sums."
   putStrLn "═══════════════════════════════════════════════════════════"
 
 roundTo' :: Int -> Double -> Double
