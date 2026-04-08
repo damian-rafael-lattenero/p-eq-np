@@ -43,6 +43,7 @@ library
     PeqNP.Topological
     PeqNP.Combined
     PeqNP.MITM
+    PeqNP.OptimalGF2
     PeqNP.FingerTree
     PeqNP.UnifiedExperiments
     PeqNP.BitDecompose
