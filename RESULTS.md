@@ -215,3 +215,43 @@ which is exponential.
 not a polynomial algorithm for all Subset Sum instances.**
 
 This does NOT prove P = NP.
+
+## TRUE Density 1 Results (weights ≈ 2^n)
+
+```
+n     maxW      density  real_states  c_real
+6     90        0.92     56           2.25
+8     365       0.94     153          2.42
+10    1517      0.95     424          2.63
+12    5864      0.96     987          2.77
+14    24230     0.96     1864         2.85
+16    97958     0.97     3862         2.98
+```
+
+### c grows linearly with n for density 1
+
+c(n) ≈ 2.0 + 0.073n. Does NOT stabilize.
+
+Projection: n=100 → c ≈ 8.1 → states ≈ 100^8 = 10^16.
+
+This is SUBEXPONENTIAL: O(n^{0.073n}) = O(2^{0.073n·log n})
+but NOT polynomial (exponent grows with n).
+
+### Comparison
+
+| Instance type | c behavior | Complexity |
+|--------------|-----------|-----------|
+| High density (d>>1) | c = 2.92 stable | O(n³) pseudo-poly |
+| Density 1 (d≈1) | c = 2.0 + 0.073n | O(n^{0.073n}) subexp |
+
+### Comparison with known algorithms for density 1
+
+| Algorithm | Complexity | n=100 work |
+|-----------|-----------|------------|
+| Brute force | 2^100 | 10^30 |
+| MITM | 2^50 | 10^15 |
+| BCJ 2011 | 2^29 | 5×10^8 |
+| **Group sieve** | **100^8** | **10^16** |
+
+Group sieve at density 1 is comparable to MITM, worse than BCJ.
+It is NOT a breakthrough for density 1 — it's a reorganized DP.
