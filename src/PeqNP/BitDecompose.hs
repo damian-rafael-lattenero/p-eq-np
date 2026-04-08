@@ -24,6 +24,10 @@ module PeqNP.BitDecompose
   , InterleavedStats(..)
   , interleavedSolve
   , showInterleavedStats
+    -- * Basis optimization: find best multiplier
+  , overlapForMultiplier
+  , bestMultiplier
+  , showBasisSearch
   ) where
 
 import qualified Data.Set as Set
@@ -534,3 +538,52 @@ showInterleavedStats is' = unlines $
        else if isMaxActive is' <= 5 then "FPT-tractable (active ≤ 5)"
        else "EXPONENTIAL in active (active = " ++ show (isMaxActive is') ++ ")")
   ]
+
+-- ═══════════════════════════════════════════════════════════
+-- Basis optimization: can we reduce overlap by multiplying?
+-- ═══════════════════════════════════════════════════════════
+
+-- | Compute max bit-overlap for weights scaled by multiplier c.
+-- Overlap at bit k = number of weights with a 1 at position k
+-- that also have a 1 at some position > k (i.e., "active" weights).
+overlapForMultiplier :: [Int] -> Int -> Int
+overlapForMultiplier elems c =
+  let scaled = map (* c) elems
+      b = maxBits scaled
+      highBit w = maximum (-1 : [k | k <- [0..b-1], testBit w k])
+      active k = length [ w | w <- scaled
+                         , testBit w k
+                         , highBit w > k
+                         ]
+  in maximum (0 : [active k | k <- [0..b-1]])
+
+-- | Search for the multiplier c in [1..maxC] that minimizes max overlap.
+bestMultiplier :: [Int] -> Int -> (Int, Int)  -- (best c, its overlap)
+bestMultiplier elems maxC =
+  let candidates = [(c, overlapForMultiplier elems c) | c <- [1..maxC]]
+  in minimumByOverlap candidates
+  where
+    minimumByOverlap [] = (1, length elems)
+    minimumByOverlap xs = foldr1 (\(c1,o1) (c2,o2) -> if o1 <= o2 then (c1,o1) else (c2,o2)) xs
+
+-- | Show basis search results
+showBasisSearch :: [Int] -> Int -> String
+showBasisSearch elems maxC =
+  let (bestC, bestOverlap) = bestMultiplier elems maxC
+      origOverlap = overlapForMultiplier elems 1
+      results = [(c, overlapForMultiplier elems c) | c <- [1..min 20 maxC]]
+  in unlines $
+    [ "  Original overlap (c=1): " ++ show origOverlap
+    , "  Best multiplier c=" ++ show bestC ++ " → overlap=" ++ show bestOverlap
+    , ""
+    , "  c   overlap"
+    , "  " ++ replicate 20 '-'
+    ] ++
+    [ "  " ++ padR'' 4 (show c) ++ show o
+        ++ (if o < origOverlap then "  ← better!" else "")
+        ++ (if c == bestC then "  ★ BEST" else "")
+    | (c, o) <- results
+    ]
+
+padR'' :: Int -> String -> String
+padR'' n s = s ++ replicate (max 0 (n - length s)) ' '

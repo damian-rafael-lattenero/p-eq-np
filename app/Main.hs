@@ -26,7 +26,7 @@ import PeqNP.LazyTree (searchWithStats, showPruneStats)
 import PeqNP.Streaming (streamingSolve, showStreamStats)
 import PeqNP.Diagonal (diagonalExperiment, showDiagonalResults, greedyLargest, greedySmallest, alwaysInclude, alwaysSkip, thresholdHalf, alternating)
 import PeqNP.FingerTree (fingerTreeSolve, showFTStats, measureDifficulty, showDifficultyProfile)
-import PeqNP.BitDecompose (analyzeCarry, showCarryProfile, bitLevelSolve, BitLevelStats(..), decomposeProblem, BitColumn(..), coupledBitSolve, showCoupledStats, untieRetieExperiment, showUntieRetie, interleavedSolve, showInterleavedStats)
+import PeqNP.BitDecompose (analyzeCarry, showCarryProfile, bitLevelSolve, BitLevelStats(..), decomposeProblem, BitColumn(..), coupledBitSolve, showCoupledStats, untieRetieExperiment, showUntieRetie, interleavedSolve, showInterleavedStats, showBasisSearch)
 import PeqNP.UnifiedExperiments (unifiedAnalysis, showUnifiedTable)
 
 main :: IO ()
@@ -534,6 +534,23 @@ main = do
 
   putStrLn "  [100,200,400,800,1600] target=1000 (exponential weights):"
   putStr $ showInterleavedStats (interleavedSolve [100,200,400,800,1600] 1000)
+  putStrLn ""
+
+  sectionHeader "32. BASIS SEARCH: can multiplying reduce overlap?"
+  putStrLn "  Multiplying weights by c redistributes bits."
+  putStrLn "  Does any c reduce max_active?"
+  putStrLn ""
+
+  putStrLn "  Dense overlap: [3,5,7] (all odd → bit 0 overlap = 3):"
+  putStr $ showBasisSearch [3,5,7] 20
+  putStrLn ""
+
+  putStrLn "  Fibonacci: [1,2,3,5,8,13]:"
+  putStr $ showBasisSearch [1,2,3,5,8,13] 20
+  putStrLn ""
+
+  putStrLn "  Dense: [7,11,13,14] (lots of shared bits):"
+  putStr $ showBasisSearch [7,11,13,14] 20
   putStrLn ""
 
   putStrLn "═══════════════════════════════════════════════════════════"
