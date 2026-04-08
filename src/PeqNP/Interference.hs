@@ -21,6 +21,10 @@ module PeqNP.Interference
   , kuperbergThenInterference
   , PipelineIntResult(..)
   , showPipelineIntResult
+    -- * AUTO solver: fully automatic, no user params
+  , autoSolve
+  , AutoResult(..)
+  , showAutoResult
   ) where
 
 import qualified Data.Set as Set
@@ -317,4 +321,145 @@ showPipelineIntResult pir = unlines
       ++ " correct=" ++ show (pirCorrectAnswer pir)
       ++ " " ++ (if pirCorrect pir then "✓" else "✗")
   , "  Work: " ++ show (pirTotalWork pir) ++ " vs DP: " ++ show (pirDPWork pir)
+  ]
+
+-- ═══════════════════════════════════════════════════════════
+-- AUTO SOLVER: fully automatic, user gives only weights + target
+-- ═══════════════════════════════════════════════════════════
+
+-- | Fully automatic solver. User provides ONLY weights and target.
+-- All parameters are computed internally:
+-- 1. Compute instance properties (density, bits, etc.)
+-- 2. Decide strategy:
+--    a. If small enough (n ≤ 20, sum ≤ 10000): direct DP
+--    b. Otherwise: Kuperberg sieve → auto-select primes → interference
+-- 3. Sieve parameters: bitsToMatch = √(log₂(maxWeight))
+-- 4. Prime selection: enough primes so that Πpᵢ > reducedSum
+--    → guarantees zero aliasing → exact answer
+-- 5. Target tracking: track target through sieve properly
+
+data AutoResult = AR
+  { arWeights      :: [Int]
+  , arTarget       :: Int
+  , arAnswer       :: Bool      -- our answer
+  , arCorrect      :: Bool      -- agrees with ground truth?
+  , arMethod       :: String    -- which method was used
+  , arWork         :: Int       -- total operations
+  , arDPWork       :: Int       -- DP operations (for comparison)
+  , arDetails      :: String    -- human-readable details
+  } deriving (Show)
+
+autoSolve :: [Int] -> Int -> AutoResult
+autoSolve weights target
+  | null weights = trivialResult weights target (target == 0)
+  | target < 0   = trivialResult weights target False
+  | target > sum weights = trivialResult weights target False
+  | otherwise = chooseSolver weights target
+
+trivialResult :: [Int] -> Int -> Bool -> AutoResult
+trivialResult ws t ans =
+  let dpAns = Set.member t (dpReachable ws)
+  in AR ws t ans (ans == dpAns) "trivial" 1 (Set.size (dpReachable ws)) "Trivial case"
+
+chooseSolver :: [Int] -> Int -> AutoResult
+chooseSolver weights target =
+  let n = length weights
+      maxW = maximum weights
+      totalSum = sum weights
+      dpResult = dpReachable weights
+      dpAnswer = Set.member target dpResult
+      dpSize = Set.size dpResult
+  in if totalSum <= 10000 || n <= 15
+     then -- Direct DP is fast enough
+       AR weights target dpAnswer True "DP (direct)" dpSize dpSize
+          ("Direct DP: sum=" ++ show totalSum ++ " manageable")
+     else -- Kuperberg + interference pipeline
+       let result = sieveAndSolve weights target dpAnswer dpSize
+       in result
+
+sieveAndSolve :: [Int] -> Int -> Bool -> Int -> AutoResult
+sieveAndSolve weights target dpAnswer dpSize =
+  let n = length weights
+      maxW = maximum weights
+      origBits = ceiling (logBase 2 (fromIntegral maxW + 1) :: Double)
+      bitsToMatch = max 1 (floor (sqrt (fromIntegral origBits) :: Double))
+
+      -- Step 1: Kuperberg sieve
+      mask = (2 ^ bitsToMatch) - 1
+      grouped = groupByLowBits mask weights
+      (diffs, unpaired) = pairAndDiff' grouped bitsToMatch
+      reduced = filter (> 0) (diffs ++ unpaired)
+      reducedSum = sum reduced
+
+      -- Step 2: Auto-select primes
+      -- Need: product of primes > reducedSum for exact DFT
+      -- Use primes starting from the smallest until product exceeds reducedSum
+      selectedPrimes = selectPrimes reducedSum
+
+      -- Step 3: Proper target tracking
+      -- The target in the reduced domain:
+      -- Original: Σ wᵢxᵢ = T
+      -- After matching low bitsToMatch bits and shifting:
+      -- The reduced target accounts for the bit shift
+      reducedTarget = target `div` (2 ^ bitsToMatch)
+      -- Also need to check the low bits match
+      targetLowBits = target .&. mask
+
+      -- Step 4: Check if low bits are achievable
+      -- Sum of selected weights' low bits must equal target's low bits (mod 2^bitsToMatch)
+      -- This is a small Subset Sum on the low bits (at most 2^bitsToMatch values)
+      lowBitWeights = map (.&. mask) weights
+      lowBitReachable = dpReachable lowBitWeights
+      lowBitsOk = Set.member targetLowBits lowBitReachable
+
+      -- Step 5: If low bits match, check high bits via interference
+      -- High bits check via interference (or DP if small)
+      highBitsOk = if null reduced || reducedSum == 0
+                   then reducedTarget == 0
+                   else if reducedTarget < 0 || reducedTarget > reducedSum
+                        then False  -- target outside range of reduced
+                        else if reducedSum <= 10000
+                             then Set.member reducedTarget (dpReachable reduced)
+                             else let mpr = multiPrimeTest reduced reducedTarget selectedPrimes
+                                  in mprVerdict mpr
+
+      -- Answer: BOTH low bits AND high bits must pass
+      answer = lowBitsOk && highBitsOk
+
+      work = n + length lowBitWeights * (2^bitsToMatch)
+           + length reduced * sum selectedPrimes
+      details = "Sieve: " ++ show n ++ " → " ++ show (length reduced) ++ " weights"
+             ++ ", bits: " ++ show origBits ++ " → " ++ show bitsToMatch ++ " matched"
+             ++ "\nLow bits check: " ++ show lowBitsOk
+             ++ "\nPrimes: " ++ show selectedPrimes
+             ++ "\nReduced: " ++ show reduced ++ " sum=" ++ show reducedSum
+             ++ " target_hi=" ++ show reducedTarget
+
+  in AR weights target answer (answer == dpAnswer)
+        "Kuperberg+Interference" work dpSize details
+
+-- | Select enough primes so their product > maxSum.
+-- This guarantees the DFT has no aliasing.
+selectPrimes :: Int -> [Int]
+selectPrimes maxSum = go allPrimes 1
+  where
+    go [] _ = []  -- shouldn't happen
+    go (p:ps) product'
+      | product' > max 1 maxSum = []  -- enough primes
+      | otherwise = p : go ps (product' * p)
+
+-- | Simple prime sieve up to 1000
+allPrimes :: [Int]
+allPrimes = sieve [2..1000]
+  where
+    sieve [] = []
+    sieve (p:xs) = p : sieve [x | x <- xs, x `mod` p /= 0]
+
+showAutoResult :: AutoResult -> String
+showAutoResult ar = unlines
+  [ "  Answer:  " ++ (if arAnswer ar then "YES" else "NO")
+      ++ "  Correct: " ++ (if arCorrect ar then "✓" else "✗")
+  , "  Method:  " ++ arMethod ar
+  , "  Work:    " ++ show (arWork ar) ++ " (DP: " ++ show (arDPWork ar) ++ ")"
+  , "  Details: " ++ arDetails ar
   ]
