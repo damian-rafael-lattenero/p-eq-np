@@ -255,3 +255,36 @@ but NOT polynomial (exponent grows with n).
 
 Group sieve at density 1 is comparable to MITM, worse than BCJ.
 It is NOT a breakthrough for density 1 — it's a reorganized DP.
+
+## MITM + Group Sieve at Density 1
+
+Combining MITM within groups with group sieve:
+```
+n     cross    perGrp  grps  c_cross
+6     52       8       2     2.21
+8     153      16      2     2.42
+10    424      16      2     2.63
+12    987      32      2     2.77
+14    1456     32      2     2.76  ← slight dip
+16    3586     64      2     2.95
+```
+
+MITM halves per-group exponent (2^g → 2^{g/2}) but cross-group
+states remain the same because only 2 groups are used.
+With 2 groups, cross-group DP = standard MITM ≈ O(2^{n/2}).
+
+The conservation law holds: per-group × cross-group ≈ 2^n.
+No combination of group sieve + MITM changes the total.
+
+## Final Conclusions
+
+1. The group sieve is a valid reorganization of Subset Sum computation
+2. For high density (d >> 1): O(n³) — matches known pseudo-poly results  
+3. For density 1 (d ≈ 1): O(n^{0.073n}) — subexponential, comparable to MITM
+4. No combination of grouping + MITM + GF(2) achieves polynomial for density 1
+5. The difficulty of density-1 Subset Sum is **structural**, not representational
+
+The project explored P vs NP from enriched category theory through
+50+ modules and 8000+ lines of Haskell. Every approach converges to
+the same barrier: density-1 instances with exponential weight magnitudes
+resist polynomial algorithms through every lens we tried.
