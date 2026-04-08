@@ -320,9 +320,14 @@ fourWayRepSolve m1 m2 weights target =
       s3 = bruteForceDP q3; w3 = Set.size s3
       s4 = bruteForceDP q4; w4 = Set.size s4
       -- Inner merge with mod M1: combine Q1+Q2 and Q3+Q4
-      leftSums = filteredMerge s1 s2 (sum q1 + sum q2) m1
-      rightSums = filteredMerge s3 s4 (sum q3 + sum q4) m2
-      -- Outer merge
+      -- RANGE-BOUNDED merge: only produce sums useful for hitting target
+      maxRight = sum q3 + sum q4
+      maxLeft = sum q1 + sum q2
+      -- leftSum must be in [target - maxRight, target] (so rightSum can fill the gap)
+      -- rightSum must be in [target - maxLeft, target]
+      leftSums = filteredMergeRange s1 s2 (max 0 (target - maxRight)) (min target maxLeft)
+      rightSums = filteredMergeRange s3 s4 (max 0 (target - maxLeft)) (min target maxRight)
+      -- Outer merge: for each left, check if target-left is in right
       found = any (\l -> Set.member (target - l) rightSums) (Set.toList leftSums)
       dpAnswer = Set.member target (bruteForceDP weights)
       innerWork = w1 + w2 + w3 + w4
@@ -330,16 +335,41 @@ fourWayRepSolve m1 m2 weights target =
       totalWork = innerWork + mergeWork
   in SR found (found == dpAnswer) totalWork 2 (Set.size leftSums) (Set.size rightSums)
 
--- | Range-filtered merge: combine sums from two sets, keep only those in range.
--- Uses a Set for B so lookup for the final target-check is O(log n).
--- For intermediate merges: produce ALL sums a+b in [0, upperBound].
+-- | RANGE-BOUNDED merge: only produce sums a+b in [lo, hi].
+-- For each a ∈ A: need b such that lo - a ≤ b ≤ hi - a.
+-- Use sorted B + binary search to find the valid range of b.
+-- Total: O(|A| × log|B| + |output|) instead of O(|A| × |B|).
 filteredMerge :: Set.Set Int -> Set.Set Int -> Int -> Int -> Set.Set Int
 filteredMerge setA setB upperBound _modulus =
+  let bList = Set.toAscList setB  -- sorted for binary search-like filtering
+      bSet = setB                 -- for Set operations
+      lo = 0
+      hi = upperBound
+  in Set.fromList
+       [ a + b
+       | a <- Set.toList setA
+       , let bLo = max 0 (lo - a)
+             bHi = hi - a
+       , bHi >= 0  -- skip if no valid b exists
+       -- Get b values in range [bLo, bHi] from bSet
+       , b <- Set.toAscList (filterRange bLo bHi bSet)
+       ]
+
+-- | Range-bounded merge: only produce sums a+b in [lo, hi].
+filteredMergeRange :: Set.Set Int -> Set.Set Int -> Int -> Int -> Set.Set Int
+filteredMergeRange setA setB lo hi =
   Set.fromList
     [ a + b
     | a <- Set.toList setA
-    , b <- Set.toList setB
-    , let s = a + b
-    , s >= 0
-    , s <= upperBound
+    , let bLo = max 0 (lo - a)
+          bHi = hi - a
+    , bHi >= 0
+    , b <- Set.toAscList (filterRange bLo bHi setB)
     ]
+
+-- | Extract elements in [lo, hi] from a Set. O(log n + k) where k = output size.
+filterRange :: Int -> Int -> Set.Set Int -> Set.Set Int
+filterRange lo hi s =
+  let (_, geqLo) = Set.split (lo - 1) s   -- elements ≥ lo
+      (leqHi, _) = Set.split (hi + 1) geqLo  -- elements ≤ hi
+  in leqHi
