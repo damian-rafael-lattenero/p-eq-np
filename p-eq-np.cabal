@@ -54,6 +54,8 @@ library
     PeqNP.ActorSolver
     PeqNP.ParallelSolver
     PeqNP.OracleSolver
+    PeqNP.ResidualGraph
+    PeqNP.StructuralSolver
   build-depends:
     base >= 4.21 && < 5,
     containers >= 0.7,
@@ -100,6 +102,25 @@ executable verify-actor
   hs-source-dirs:   bench
   default-language:  GHC2024
   ghc-options:       -O2 -threaded -rtsopts "-with-rtsopts=-N"
+
+executable structural-bench
+  main-is:          StructuralBench.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    containers >= 0.7,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2
+
+executable residual-bench
+  main-is:          ResidualBench.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2
 
 executable oracle-bench
   main-is:          OracleBench.hs
