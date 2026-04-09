@@ -35,6 +35,7 @@ module PeqNP.ActorSolver
     -- * Utilities
   , mkDensity1
   , mkDensityD
+  , mkHardDensity1
   , padR
   , roundTo
   , snapshotOf
@@ -43,6 +44,7 @@ module PeqNP.ActorSolver
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Data.List (sort, scanl')
+import Data.Bits (xor, shiftR)
 import Control.Concurrent.STM
 import Control.Concurrent.Async (async, cancel, Async)
 import PeqNP.MultiLevelSieve (recursiveRepSolveRaw)
@@ -860,6 +862,22 @@ filterRange lo hi s =
 mkDensity1 :: Int -> ([Int], Int)
 mkDensity1 n =
   let ws = [2^n + ((i * 1103515245 + 12345) `mod` (2^(n-1))) | i <- [0..n-1]]
+      t = sum ws `div` 2 + 1
+  in (ws, t)
+
+-- | Hard density-1 instances with proper hash mixing (no LCG structure).
+-- Uses a simple bit-mixing hash to eliminate the arithmetic-progression
+-- structure that mkDensity1's LCG creates. This gives U ≈ C(n/2, n/4),
+-- much harder instances for the solver.
+mkHardDensity1 :: Int -> ([Int], Int)
+mkHardDensity1 n =
+  let -- Bit-mixing hash (splitmix-style) to destroy linear structure
+      mix :: Int -> Int
+      mix x0 = let x1 = (x0 `xor` (x0 `shiftR` 16)) * 0x45d9f3b
+                   x2 = (x1 `xor` (x1 `shiftR` 16)) * 0x45d9f3b
+               in x2 `xor` (x2 `shiftR` 16)
+      ws = [2^n + (abs (mix (i * 2654435761 + 0x517cc1b7)) `mod` (2^(n-1)))
+           | i <- [0..n-1]]
       t = sum ws `div` 2 + 1
   in (ws, t)
 
