@@ -29,6 +29,9 @@ import PeqNP.Landscape (buildLandscape, ProbLandscape(..))
 import PeqNP.LazyTree (searchWithStats, PruneStats(..))
 import PeqNP.Streaming (streamingSolve, StreamStats(..))
 import PeqNP.Diagonal (diagonalExperiment, DiagonalResult(..), greedyLargest, greedySmallest, thresholdHalf)
+import PeqNP.ActorSolver (dpByCardinality, dpByCardinalityRange, dpAllCardinalities,
+                           cardinalityBounds, precomputeWeights, complementLevel,
+                           actorSolveSequential, ActorResult(..))
 
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -57,6 +60,7 @@ tests = testGroup "P=NP Enriched Category"
   , lazyTreeTests
   , streamingTests
   , diagonalTests
+  , actorSolverTests
   ]
 
 -- ═══════════════════════════════════════════════════════════
@@ -608,3 +612,109 @@ genSubsetSumInstance = do
       mask <- vectorOf (length xs) (arbitrary :: Gen Bool)
       let target = sum [x | (x, True) <- zip xs mask]
       return (xs, target)
+
+-- ═══════════════════════════════════════════════════════════
+-- Group 18: Actor solver
+-- ═══════════════════════════════════════════════════════════
+
+actorSolverTests :: TestTree
+actorSolverTests = testGroup "Actor solver (cardinality-based)"
+  [ testProperty "dpByCardinality k=0 is {0}" $
+      forAll smallList $ \xs ->
+        dpByCardinality xs 0 === Set.singleton 0
+
+  , testProperty "dpByCardinality k=n is {sum xs}" $
+      forAll smallList $ \xs ->
+        not (null xs) ==>
+          dpByCardinality xs (length xs) === Set.singleton (sum xs)
+
+  , testProperty "dpByCardinality matches brute force k-subsets" $
+      forAll genSmallSubsetSumInstance $ \(xs, _) ->
+        not (null xs) ==>
+          let n = length xs
+              k = n `div` 2
+              kSubsets = [sub | sub <- subsequences xs, length sub == k]
+              expected = Set.fromList (map sum kSubsets)
+          in dpByCardinality xs k === expected
+
+  , testProperty "union of all cardinalities = dpReachable" $
+      forAll smallList $ \xs ->
+        let n = length xs
+            allCard = Set.unions [dpByCardinality xs k | k <- [0..n]]
+            dpAll = dpReachable xs
+        in allCard === dpAll
+
+  , testProperty "dpAllCardinalities matches individual calls" $
+      forAll smallList $ \xs ->
+        let n = length xs
+            allMap = dpAllCardinalities xs
+            individual = Map.fromList [(k, dpByCardinality xs k) | k <- [0..n]]
+        in allMap === individual
+
+  , testProperty "cardinalityBounds contains all reachable sums" $
+      forAll smallList $ \xs ->
+        not (null xs) ==>
+          let pw = precomputeWeights xs
+              n = length xs
+              k = n `div` 2
+              (lo, hi) = cardinalityBounds pw k
+              sums = dpByCardinality xs k
+          in all (\s -> s >= lo && s <= hi) (Set.toList sums)
+
+  , testProperty "dpByCardinalityRange is subset of dpByCardinality" $
+      forAll smallList $ \xs ->
+        not (null xs) ==>
+          let n = length xs; k = n `div` 2
+              full = dpByCardinality xs k
+              pw = precomputeWeights xs
+              (lo, hi) = cardinalityBounds pw k
+              lo' = lo + (hi - lo) `div` 4
+              hi' = hi - (hi - lo) `div` 4
+              filtered = dpByCardinalityRange xs k lo' hi'
+          in Set.isSubsetOf filtered full
+
+  , testProperty "dpByCardinalityRange preserves elements in range" $
+      forAll smallList $ \xs ->
+        not (null xs) ==>
+          let n = length xs; k = n `div` 2
+              full = dpByCardinality xs k
+              pw = precomputeWeights xs
+              (lo, hi) = cardinalityBounds pw k
+              lo' = lo + (hi - lo) `div` 4
+              hi' = hi - (hi - lo) `div` 4
+              filtered = dpByCardinalityRange xs k lo' hi'
+              inRange = Set.filter (\s -> s >= lo' && s <= hi') full
+          in filtered === inRange
+
+  , testProperty "complementLevel: level k <-> level (n-k)" $
+      forAll smallList $ \xs ->
+        not (null xs) ==>
+          let n = length xs
+              k = min (n `div` 2) n
+              totalS = sum xs
+              sumsK = dpByCardinality xs k
+              sumsNK = dpByCardinality xs (n - k)
+              complement = complementLevel totalS sumsK
+          in complement === sumsNK
+
+  , testProperty "sequential solver agrees with brute force" $
+      forAll genSubsetSumInstance $ \(xs, target) ->
+        not (null xs) ==>
+          arCorrect (actorSolveSequential xs target)
+
+  , testProperty "sequential solver: NO instances correct" $
+      forAll smallList $ \xs ->
+        not (null xs) ==>
+          let target = sum xs + 1  -- impossible target
+          in arCorrect (actorSolveSequential xs target)
+
+  , testProperty "[1,2,3,4] target=5 found" $
+      arFound (actorSolveSequential [1,2,3,4] 5)
+
+  , testProperty "[1,2,3,4] target=11 not found" $
+      not (arFound (actorSolveSequential [1,2,3,4] 11))
+  ]
+
+subsequences :: [a] -> [[a]]
+subsequences [] = [[]]
+subsequences (x:xs) = let r = subsequences xs in r ++ map (x:) r

@@ -51,9 +51,14 @@ library
     PeqNP.FingerTree
     PeqNP.UnifiedExperiments
     PeqNP.BitDecompose
+    PeqNP.ActorSolver
+    PeqNP.ParallelSolver
+    PeqNP.OracleSolver
   build-depends:
     base >= 4.21 && < 5,
-    containers >= 0.7
+    containers >= 0.7,
+    stm >= 2.5,
+    async >= 2.2
   hs-source-dirs:   src
   default-language:  GHC2024
   ghc-options:       -Wall -Wcompat
@@ -76,6 +81,63 @@ executable bench-sieve
   hs-source-dirs:   bench
   default-language:  GHC2024
   ghc-options:       -O2
+
+executable bench-actor
+  main-is:          BenchActor.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2 -threaded -rtsopts "-with-rtsopts=-N"
+
+executable verify-actor
+  main-is:          VerifyActor.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    containers >= 0.7,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2 -threaded -rtsopts "-with-rtsopts=-N"
+
+executable oracle-bench
+  main-is:          OracleBench.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2
+
+executable par-bench
+  main-is:          ParBench.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    containers >= 0.7,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2 -threaded -rtsopts "-with-rtsopts=-N"
+
+executable honest-bench
+  main-is:          HonestBench.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    containers >= 0.7,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2
+
+executable heavy-bench
+  main-is:          HeavyBench.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2 -threaded -rtsopts "-with-rtsopts=-N"
 
 executable p-eq-np
   main-is:          Main.hs

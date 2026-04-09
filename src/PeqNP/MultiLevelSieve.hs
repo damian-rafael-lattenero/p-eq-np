@@ -8,8 +8,11 @@ module PeqNP.MultiLevelSieve
   , fourWayRepSolve
   , repFourWaySolve
   , recursiveRepSolve
+  , recursiveRepSolveRaw
     -- * Pruned group sieve (inner level)
   , prunedGroupSums
+    -- * Brute force DP (for verification)
+  , bruteForceDP
     -- * Benchmarking
   , benchmark
   , BenchResult(..)
@@ -540,3 +543,39 @@ recursiveRepSolve m1 weights target =
       dpAnswer = Set.member target (bruteForceDP weights)
       innerWork = Set.size s1 + Set.size s2 + Set.size s3 + Set.size s4
   in SR found (found == dpAnswer) (innerWork + work) 2 0 0
+
+-- | Same as recursiveRepSolve but WITHOUT bruteForceDP verification.
+-- Essential for n > 30 where bruteForceDP is infeasible (weights ~ 2^n).
+-- Returns (found, work).
+recursiveRepSolveRaw :: Int -> [Int] -> Int -> (Bool, Int)
+recursiveRepSolveRaw m1 weights target =
+  let n = length weights
+      q = n `div` 4
+      (q1, rest1) = splitAt q weights
+      (q2, rest2) = splitAt q rest1
+      (q3, q4)    = splitAt q rest2
+      s1 = bruteForceDP q1; s2 = bruteForceDP q2
+      s3 = bruteForceDP q3; s4 = bruteForceDP q4
+      b2 = Map.fromListWith (++) [(s `mod` m1, [s]) | s <- Set.toList s2]
+      b4 = Map.fromListWith (++) [(s `mod` m1, [s]) | s <- Set.toList s4]
+      tMod = target `mod` m1
+      (found, work) = goRaw 0 0
+      goRaw r w | r >= m1 = (False, w)
+      goRaw r w =
+        let leftR = Set.fromList
+              [ a + b
+              | a <- Set.toList s1
+              , b <- Map.findWithDefault [] ((r - a `mod` m1) `mod` m1) b2
+              ]
+            rRight = (tMod - r) `mod` m1
+            rightR = Set.fromList
+              [ c + d
+              | c <- Set.toList s3
+              , d <- Map.findWithDefault [] ((rRight - c `mod` m1) `mod` m1) b4
+              ]
+            hit = any (\l -> Set.member (target - l) rightR) (Set.toList leftR)
+            stepW = Set.size leftR + Set.size rightR
+        in if hit then (True, w + stepW)
+           else goRaw (r + 1) (w + stepW)
+      innerWork = Set.size s1 + Set.size s2 + Set.size s3 + Set.size s4
+  in (found, innerWork + work)
