@@ -302,6 +302,36 @@ executable tree-fusion
   default-language:  GHC2024
   ghc-options:       -O2
 
+executable moebius-lift
+  main-is:          MoebiusLift.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    containers >= 0.7,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2
+
+executable cascade-twist
+  main-is:          CascadeTwist.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    containers >= 0.7,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2
+
+executable compression-gap
+  main-is:          CompressionGap.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    containers >= 0.7,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2
+
 executable bit-level-dp
   main-is:          BitLevelDP.hs
   build-depends:
