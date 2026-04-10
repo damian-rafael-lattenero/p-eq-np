@@ -162,6 +162,16 @@ executable heavy-bench
   default-language:  GHC2024
   ghc-options:       -O2 -threaded -rtsopts "-with-rtsopts=-N"
 
+executable log-domain
+  main-is:          LogDomain.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    containers >= 0.7,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2
+
 executable recursive-approx
   main-is:          RecursiveApprox.hs
   build-depends:
