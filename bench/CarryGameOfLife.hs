@@ -1,78 +1,122 @@
 module Main where
 
 {-
-  THE CARRY STATE AS A GAME OF LIFE
+  QUANTUM ANALOGY: Superposition, Interference & Collapse
 
-  Processing Subset Sum bit-by-bit (LSB → MSB), the "carry state"
-  is a set of possible carry values at each bit position.
+  UNCOUPLED carry state = "superposition" — multiple subsets coexist
+  behind the same carry value. The carry is the "wave function."
 
-  UNCOUPLED: each bit column is processed independently. Carry ≤ n/2.
-             O(n³) total. But it's a RELAXATION — ignores coupling.
+  MULTIPLICITY = how many distinct subsets produce the same carry
+  at each bit position. This is the "entanglement" measure.
 
-  COUPLED:   the same weights must be included across all bits.
-             Carry state can explode to 2^n.
+  If multiplicity is low → uncoupled ≈ coupled → easy
+  If multiplicity is high → lots of hidden state → hard
 
-  THE GAP between uncoupled and coupled IS where NP-hardness lives.
+  INTERFERENCE = when two subsets produce the same carry AND
+  the same future carries. They "merge" — the coupling doesn't
+  matter past that point. Like wave interference.
 
-  Visualization: x-axis = bit position, y-axis = carry value.
-  Each cell is ALIVE (●) if that carry value is in the carry set,
-  DEAD (·) if not. Watch the pattern evolve like GoL!
+  DECOHERENCE POINTS = bit positions where different subsets
+  with the same carry also produce the same carry at the next bit.
+  These are "free" — no coupling cost.
 -}
 
 import PeqNP.BitDecompose (decomposeProblem, BitColumn(..), toBits, maxBits)
 import PeqNP.ActorSolver (padR)
+import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
+import Data.List (foldl')
 import Data.Bits (xor, shiftR, testBit)
 
--- | Process bit columns and return the carry SETS at each position.
--- This is the uncoupled (relaxed) carry evolution.
-carryEvolution :: [Int] -> Int -> [Set.Set Int]
-carryEvolution elems target =
-  let columns = decomposeProblem elems
-      targetBits = toBits (length columns) target
-  in go columns targetBits (Set.singleton 0) [Set.singleton 0]
+-- | For each subset of weights, compute the carry at each bit position.
+-- Returns: for each bit position, a Map from carry_value → number of subsets
+-- that produce that carry.
+--
+-- This measures the MULTIPLICITY: how many subsets hide behind each carry.
+-- WARNING: enumerates 2^n subsets. Only feasible for n ≤ 18.
+carryMultiplicity :: [Int] -> Int -> [Map.Map Int Int]
+carryMultiplicity elems target =
+  let n = length elems
+      b = maxBits elems
+      targetBits = toBits b target
+      numSubsets = 2^n
+
+      -- For each subset (bitmask 0..2^n-1), compute partial sum
+      -- then trace the carry through each bit position
+      allCarryTraces :: [[Int]]  -- list of carry traces, one per subset
+      allCarryTraces =
+        [ traceCarries targetBits (subsetSum mask elems)
+        | mask <- [0..numSubsets-1]
+        ]
+
+      -- Count multiplicities at each bit position
+      multiplicities = [ Map.fromListWith (+) [(carry, 1 :: Int) | trace <- allCarryTraces, let carry = trace !! k]
+                       | k <- [0..b]
+                       ]
+  in multiplicities
   where
-    go [] _ _ acc = reverse acc
-    go _ [] _ acc = reverse acc
-    go (col:cols) (tBit:tBits) carryIn acc =
-      let onesCount = bcOnesCount col
-          targetBit = if tBit then 1 :: Int else 0
-          carryOut = Set.fromList
-            [ (c + s) `div` 2
-            | c <- Set.toList carryIn
-            , s <- [0..onesCount]
-            , (c + s) `mod` 2 == targetBit
-            ]
-      in go cols tBits carryOut (carryOut : acc)
+    subsetSum :: Int -> [Int] -> Int
+    subsetSum mask ws = sum [w | (i, w) <- zip [0..] ws, testBit mask i]
 
--- | ASCII visualization of carry state evolution.
--- Bit position → (x-axis), carry value → (y-axis, inverted).
-visualizeCarry :: [Set.Set Int] -> String
-visualizeCarry sets =
-  let maxCarry = maximum [if Set.null s then 0 else Set.findMax s | s <- sets]
-      nBits = length sets
-      -- Header
-      header = "     " ++ concatMap (\i -> padR 2 (show (i `mod` 10))) [0..nBits-1]
-      separator = "     " ++ replicate (nBits * 2) '-'
-      -- Rows (from maxCarry down to 0)
-      rows = [ padR 4 (show c) ++ "|"
-               ++ concatMap (\s -> if Set.member c s then "● " else "· ") sets
-             | c <- [maxCarry, maxCarry-1..0]
-             ]
-  in unlines (["  bit:" ++ header, separator] ++ rows ++ [separator])
+    -- Given target bits and a partial sum, compute carry at each bit position
+    traceCarries :: [Bool] -> Int -> [Int]
+    traceCarries tBits partialSum =
+      let sumBits = [testBit partialSum k | k <- [0..length tBits - 1]]
+          -- Carry propagation: carry_0 = 0
+          -- At bit k: sum_k + carry_k: if this matches target_k, carry_{k+1} = borrow/carry
+          -- Actually, we track the carry of the DIFFERENCE (target - partialSum)
+          -- Simpler: just track carry_out = (carry_in + selected_ones) / 2
+          -- But we're given the FULL partial sum, not per-column selections.
+          -- For multiplicity, what matters is: the carry VALUE at each bit.
+          --
+          -- The carry at bit k = (partialSum - target) accumulated through bits 0..k-1
+          -- More precisely: the carry state from the column-by-column processing.
+      in scanl (\c k ->
+          let sBit = if testBit partialSum k then 1 else 0 :: Int
+              tBit = if k < length tBits && tBits !! k then 1 else 0
+              -- carry_out = (carry_in + sBit - tBit) at this position
+              -- But that's the difference carry, not the column carry.
+              -- For column carry: carry = (carry_in + column_ones_selected) `div` 2
+              -- We can't reconstruct column_ones_selected from just the total sum.
+              -- Instead, let's use a different approach: track the "running difference"
+              -- between partialSum and target, accumulated through bits.
+              total = c + sBit - tBit
+              -- The carry to next position:
+              carryOut = if total >= 0 then total `div` 2 else (total - 1) `div` 2
+          in carryOut
+          ) 0 [0..length tBits - 1]
 
--- | Detect periodicity in carry evolution.
--- Check if carry sets repeat with some period T.
-detectPeriod :: [Set.Set Int] -> Maybe Int
-detectPeriod sets
-  | length sets < 4 = Nothing
-  | otherwise = case [t | t <- [1..length sets `div` 2]
-                      , all (\i -> i + t >= length sets
-                                   || sets !! i == sets !! (i + t))
-                            [length sets `div` 3 .. length sets - t - 1]
-                      ] of
-      (t:_) -> Just t
-      []    -> Nothing
+-- | Simpler approach: for each bit position k, compute the residue
+-- of the partial sum modulo 2^(k+1). This captures all the information
+-- that "flowed through" bits 0..k.
+--
+-- Two subsets S₁, S₂ with the same residue mod 2^(k+1) are
+-- INDISTINGUISHABLE by bits 0..k — they have the same "carry history."
+-- They can be merged (interference) without loss.
+--
+-- MULTIPLICITY at bit k = how many distinct subsets produce each
+-- residue mod 2^(k+1).
+residueMultiplicity :: [Int] -> Int -> [(Int, Int, Int)]
+  -- Returns: [(bit_position, num_distinct_residues, max_multiplicity)]
+residueMultiplicity elems target =
+  let n = length elems
+      b = maxBits elems
+      numSubsets = (2::Int)^n
+
+      -- All partial sums
+      allSums = [sum [w | (i, w) <- zip [0..] elems, testBit mask i]
+                | mask <- [0..numSubsets-1 :: Int]]
+
+      -- For each bit position k: count distinct (sum mod 2^(k+1)) values
+      -- and the maximum number of sums sharing the same residue
+  in [ let modulus = 2^(k+1)
+           residues = map (`mod` modulus) allSums
+           counts = Map.fromListWith (+) [(r, 1 :: Int) | r <- residues]
+           numDistinct = Map.size counts
+           maxMult = maximum (Map.elems counts)
+       in (k, numDistinct, maxMult)
+     | k <- [0..min (b-1) 30]  -- cap to avoid huge moduli
+     ]
 
 -- Instance generators
 mkHash :: Int -> ([Int], Int)
@@ -94,90 +138,128 @@ mkLCG n =
 main :: IO ()
 main = do
   putStrLn "═══════════════════════════════════════════════════════════"
-  putStrLn " CARRY STATE: the Game of Life of Subset Sum"
-  putStrLn " ● = carry value alive, · = dead"
+  putStrLn " QUANTUM SUBSET SUM: superposition, interference, collapse"
   putStrLn "═══════════════════════════════════════════════════════════"
   putStrLn ""
 
-  -- Small example first
-  putStrLn "=== SMALL: [5, 13, 3, 7, 11] target=19 ==="
-  let ws1 = [5, 13, 3, 7, 11]
+  -- Part 1: Residue multiplicity = "entanglement" measurement
+  -- At each bit k: how many distinct residues (mod 2^{k+1}) exist
+  -- among ALL 2^n subset sums?
+  -- distinct_residues = number of "superposition branches"
+  -- max_multiplicity = how many subsets "interfere" into one branch
+  putStrLn "=== RESIDUE MULTIPLICITY: how many subsets share the same carry? ==="
+  putStrLn ""
+
+  -- Small example
+  putStrLn "--- [3, 5, 7, 11, 13] target=19 ---"
+  let ws1 = [3, 5, 7, 11, 13]
       t1 = 19
-      ev1 = carryEvolution ws1 t1
-  putStrLn $ visualizeCarry ev1
-  putStrLn $ "  Sizes: " ++ show (map Set.size ev1)
-  putStrLn $ "  Period: " ++ show (detectPeriod ev1)
+      rm1 = residueMultiplicity ws1 t1
+  putStrLn (padR 6 "bit" ++ padR 14 "residues" ++ padR 14 "max-mult"
+    ++ padR 14 "2^(k+1)" ++ padR 14 "ratio")
+  putStrLn (replicate 62 '-')
+  mapM_ (\(k, nd, mm) ->
+    let modulus = (2::Int)^(k+1)
+    in putStrLn $ padR 6 (show k)
+      ++ padR 14 (show nd)
+      ++ padR 14 (show mm)
+      ++ padR 14 (show modulus)
+      ++ padR 14 (showF 1 (fromIntegral nd / fromIntegral modulus * 100) ++ "%")
+    ) rm1
   putStrLn ""
 
-  -- Density-1 LCG (structured)
-  putStrLn "=== LCG n=12 (structured weights) ==="
-  let (wsL, tL) = mkLCG 12
-      evL = carryEvolution wsL tL
-  putStrLn $ visualizeCarry evL
-  putStrLn $ "  Carry sizes: " ++ show (map Set.size evL)
-  putStrLn $ "  Max carry:   " ++ show (maximum (map Set.size evL))
-  putStrLn $ "  Period:      " ++ show (detectPeriod evL)
+  -- LCG n=14 (structured)
+  putStrLn "--- LCG n=14 (structured) ---"
+  let (wsL, tL) = mkLCG 14
+      rmL = residueMultiplicity wsL tL
+  putStrLn (padR 6 "bit" ++ padR 14 "residues" ++ padR 14 "max-mult"
+    ++ padR 14 "2^n=16384" ++ "superposition")
+  putStrLn (replicate 62 '-')
+  mapM_ (\(k, nd, mm) ->
+    putStrLn $ padR 6 (show k)
+      ++ padR 14 (show nd)
+      ++ padR 14 (show mm)
+      ++ padR 14 (show ((2::Int)^(k+1)))
+      ++ show (round (fromIntegral ((2::Int)^14) / fromIntegral nd :: Double) :: Int) ++ ":1"
+    ) (take 16 rmL)
   putStrLn ""
 
-  -- Density-1 Hash (random)
-  putStrLn "=== HASH n=12 (random weights) ==="
-  let (wsH, tH) = mkHash 12
-      evH = carryEvolution wsH tH
-  putStrLn $ visualizeCarry evH
-  putStrLn $ "  Carry sizes: " ++ show (map Set.size evH)
-  putStrLn $ "  Max carry:   " ++ show (maximum (map Set.size evH))
-  putStrLn $ "  Period:      " ++ show (detectPeriod evH)
+  -- HASH n=14 (random)
+  putStrLn "--- HASH n=14 (random, hard) ---"
+  let (wsH, tH) = mkHash 14
+      rmH = residueMultiplicity wsH tH
+  putStrLn (padR 6 "bit" ++ padR 14 "residues" ++ padR 14 "max-mult"
+    ++ padR 14 "2^n=16384" ++ "superposition")
+  putStrLn (replicate 62 '-')
+  mapM_ (\(k, nd, mm) ->
+    putStrLn $ padR 6 (show k)
+      ++ padR 14 (show nd)
+      ++ padR 14 (show mm)
+      ++ padR 14 (show ((2::Int)^(k+1)))
+      ++ show (round (fromIntegral ((2::Int)^14) / fromIntegral nd :: Double) :: Int) ++ ":1"
+    ) (take 16 rmH)
   putStrLn ""
 
-  -- Scale: carry profile for various n
-  putStrLn "=== SCALING: max carry set size vs n ==="
-  putStrLn (padR 5 "n" ++ padR 8 "bits" ++ padR 12 "max-carry"
-    ++ padR 8 "n/2" ++ padR 10 "ratio" ++ padR 10 "period")
-  putStrLn (replicate 55 '-')
+  -- Part 2: The collapse cost
+  -- At which bit does the multiplicity become 1 (fully collapsed)?
+  -- Before that: superposition. After: classical.
+  putStrLn "=== WHERE DOES THE WAVE COLLAPSE? ==="
+  putStrLn "  (Bit where residues = 2^n, meaning every subset is distinguishable)"
+  putStrLn ""
+  mapM_ (\(label, ws, t) -> do
+    let n = length ws
+        rm = residueMultiplicity ws t
+        fullN = (2::Int)^n
+        collapseAt = case [(k, nd) | (k, nd, _) <- rm, nd == fullN] of
+                       ((k,_):_) -> Just k
+                       []        -> Nothing
+    putStrLn $ "  " ++ padR 20 label
+      ++ "n=" ++ padR 4 (show n)
+      ++ "collapse@bit=" ++ maybe "never(within range)" show collapseAt
+      ++ "  (2^n=" ++ show fullN ++ ")"
+    ) [ ("LCG n=10", fst (mkLCG 10), snd (mkLCG 10))
+      , ("Hash n=10", fst (mkHash 10), snd (mkHash 10))
+      , ("LCG n=12", fst (mkLCG 12), snd (mkLCG 12))
+      , ("Hash n=12", fst (mkHash 12), snd (mkHash 12))
+      , ("LCG n=14", fst (mkLCG 14), snd (mkLCG 14))
+      , ("Hash n=14", fst (mkHash 14), snd (mkHash 14))
+      , ("Sequential n=14", [1..14], sum [1..7])
+      , ("[1..16]", [1..16], sum [1..8])
+      ]
+  putStrLn ""
+
+  -- Part 3: Superposition ratio at the PEAK bit
+  putStrLn "=== SUPERPOSITION RATIO at bit n (the critical bit) ==="
+  putStrLn "  2^n subsets compressed into how many residues?"
+  putStrLn (padR 5 "n" ++ padR 10 "2^n" ++ padR 14 "LCG-resid"
+    ++ padR 14 "Hash-resid" ++ padR 12 "LCG-compr" ++ padR 12 "Hash-compr")
+  putStrLn (replicate 70 '-')
   mapM_ (\n -> do
-    let (ws, t) = mkHash n
-        ev = carryEvolution ws t
-        maxC = maximum (map Set.size ev)
-        nBits = length ev
-        period = detectPeriod ev
+    let (wsL', _tL') = mkLCG n
+        (wsH', _tH') = mkHash n
+        rmL' = residueMultiplicity wsL' (snd (mkLCG n))
+        rmH' = residueMultiplicity wsH' (snd (mkHash n))
+        fullN = (2::Int)^n
+        -- Residues at bit position n (the critical one)
+        resL = case [nd | (k, nd, _) <- rmL', k == n] of (x:_) -> x; _ -> 0
+        resH = case [nd | (k, nd, _) <- rmH', k == n] of (x:_) -> x; _ -> 0
     putStrLn $ padR 5 (show n)
-      ++ padR 8 (show nBits)
-      ++ padR 12 (show maxC)
-      ++ padR 8 (show (n `div` 2 + 1))
-      ++ padR 10 (show (round (fromIntegral maxC / fromIntegral (n `div` 2 + 1) * 100 :: Double) :: Int) ++ "%")
-      ++ padR 10 (maybe "none" show period)
-    ) [8, 10, 12, 14, 16, 20, 24, 28, 32]
-  putStrLn ""
-
-  -- The billion dollar question: carry sizes per bit for n=16
-  putStrLn "=== CARRY LANDSCAPE: hash n=16 ==="
-  let (ws16, t16) = mkHash 16
-      ev16 = carryEvolution ws16 t16
-  putStrLn $ "  Sizes per bit: " ++ show (map Set.size ev16)
-  putStrLn $ "  Bit columns (ones count): "
-    ++ show (map bcOnesCount (decomposeProblem ws16))
-  putStrLn ""
-
-  -- Comparison: carry lives within n/2 (uncoupled)
-  -- but the COUPLED problem needs 2^n states?
-  putStrLn "=== THE GAP: uncoupled carry ≤ n/2, but coupling costs 2^n ==="
-  putStrLn (padR 5 "n" ++ padR 14 "uncoupled-max" ++ padR 14 "bound(n/2+1)"
-    ++ padR 14 "exceeds?")
-  putStrLn (replicate 50 '-')
-  mapM_ (\n -> do
-    let (ws, t) = mkHash n
-        ev = carryEvolution ws t
-        maxC = maximum (map Set.size ev)
-        bound = n `div` 2 + 1
-    putStrLn $ padR 5 (show n)
-      ++ padR 14 (show maxC)
-      ++ padR 14 (show bound)
-      ++ padR 14 (if maxC > bound then "YES!" else "no")
-    ) [8, 12, 16, 20, 24, 28, 32]
+      ++ padR 10 (show fullN)
+      ++ padR 14 (show resL)
+      ++ padR 14 (show resH)
+      ++ padR 12 (show (fullN `div` max 1 resL) ++ ":1")
+      ++ padR 12 (show (fullN `div` max 1 resH) ++ ":1")
+    ) [8, 10, 12, 14, 16]
 
   putStrLn ""
   putStrLn "═══════════════════════════════════════════════════════════"
-  putStrLn "The uncoupled carry NEVER exceeds n/2+1."
-  putStrLn "The NP-hardness hides in the COUPLING between bit columns."
-  putStrLn "Question: can coupling be tracked with < 2^n state?"
+  putStrLn "Compression N:1 = how many subsets share one residue."
+  putStrLn "If compression stays high as n grows → superposition helps!"
+  putStrLn "If compression → 1:1 → every subset is unique → 2^n states."
   putStrLn "═══════════════════════════════════════════════════════════"
+
+showF :: Int -> Double -> String
+showF decimals x =
+  let factor = 10 ^ decimals :: Int
+      rounded = fromIntegral (round (x * fromIntegral factor) :: Int) / fromIntegral factor :: Double
+  in show rounded
