@@ -56,9 +56,11 @@ library
     PeqNP.OracleSolver
     PeqNP.ResidualGraph
     PeqNP.StructuralSolver
+    PeqNP.BottomUpMITM
   build-depends:
     base >= 4.21 && < 5,
     containers >= 0.7,
+    array >= 0.5,
     stm >= 2.5,
     async >= 2.2
   hs-source-dirs:   src
@@ -159,6 +161,55 @@ executable heavy-bench
   hs-source-dirs:   bench
   default-language:  GHC2024
   ghc-options:       -O2 -threaded -rtsopts "-with-rtsopts=-N"
+
+executable carry-gol
+  main-is:          CarryGameOfLife.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    containers >= 0.7,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2
+
+executable mutating-oracle
+  main-is:          MutatingOracle.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2
+
+executable verify-big-oracle
+  main-is:          VerifyBigOracle.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    containers >= 0.7,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2
+
+executable profile-bottomup
+  main-is:          ProfileBottomUp.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    containers >= 0.7,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2
+
+executable bench-bottomup
+  main-is:          BenchBottomUp.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    containers >= 0.7,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2
 
 executable p-eq-np
   main-is:          Main.hs
