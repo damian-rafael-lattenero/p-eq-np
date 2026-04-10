@@ -252,6 +252,56 @@ executable smooth-decomp
   default-language:  GHC2024
   ghc-options:       -O2
 
+executable persistent-homology
+  main-is:          PersistentHomology.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    containers >= 0.7,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2
+
+executable topo-binary-search
+  main-is:          TopoBinarySearch.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    containers >= 0.7,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2
+
+executable magnetic-dp
+  main-is:          MagneticDP.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    containers >= 0.7,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2
+
+executable artificial-signs
+  main-is:          ArtificialSigns.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    containers >= 0.7,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2
+
+executable tree-fusion
+  main-is:          TreeFusion.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    containers >= 0.7,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2
+
 executable bit-level-dp
   main-is:          BitLevelDP.hs
   build-depends:
