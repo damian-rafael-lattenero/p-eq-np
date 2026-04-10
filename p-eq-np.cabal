@@ -162,6 +162,36 @@ executable heavy-bench
   default-language:  GHC2024
   ghc-options:       -O2 -threaded -rtsopts "-with-rtsopts=-N"
 
+executable gaussian-flare
+  main-is:          GaussianFlare.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    containers >= 0.7,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2
+
+executable topo-quotient
+  main-is:          TopologicalQuotient.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    containers >= 0.7,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2
+
+executable saddle-point
+  main-is:          SaddlePoint.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    containers >= 0.7,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2
+
 executable log-domain
   main-is:          LogDomain.hs
   build-depends:
