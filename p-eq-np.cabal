@@ -343,6 +343,26 @@ executable algebraic-short-circuit
   default-language:  GHC2024
   ghc-options:       -O2
 
+executable lazy-future
+  main-is:          LazyFuture.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    containers >= 0.7,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2
+
+executable dynamic-rich-catalog
+  main-is:          DynamicRichCatalog.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    containers >= 0.7,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2
+
 executable rich-catalog
   main-is:          RichCatalog.hs
   build-depends:
