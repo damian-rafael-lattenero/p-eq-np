@@ -337,6 +337,18 @@ executable algebraic-short-circuit
   build-depends:
     base >= 4.21 && < 5,
     containers >= 0.7,
+    array,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2
+
+executable hybrid-adt-mitm
+  main-is:          HybridADTMitm.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    containers >= 0.7,
+    array,
     p-eq-np
   hs-source-dirs:   bench
   default-language:  GHC2024

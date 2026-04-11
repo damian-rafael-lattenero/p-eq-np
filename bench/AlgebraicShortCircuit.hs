@@ -17,6 +17,7 @@ import qualified Data.IntMap.Strict as IM
 import qualified Data.IntSet as IS
 import Data.List (foldl')
 import Data.Bits (xor, shiftR)
+import qualified Data.Array as A
 import PeqNP.ActorSolver (padR)
 
 -- ═══════════════════════════════════════════════════════════════
@@ -153,7 +154,8 @@ algebraicSearch :: [Int] -> Int -> [Int] -> (Bool, Stats)
 algebraicSearch weights target primes =
   let n = length weights
       oracle = buildModOracle weights primes
-      suffixSums = scanr (+) 0 weights  -- suffixSums[k] = sum of weights[k..n-1]
+      wArr = A.listArray (0, n-1) weights  -- O(1) access
+      suffArr = A.listArray (0, n) (scanr (+) 0 weights)
 
       go :: SSInfo -> Stats -> (Bool, Stats)
       go info stats =
@@ -164,18 +166,18 @@ algebraicSearch weights target primes =
           Impossible rule -> (False, addKill rule stats')
           Live liveInfo ->
             let k = siLevel liveInfo
-                w = weights !! k
+                w = wArr A.! k
                 -- Branch IN: include weight k
                 infoIn = liveInfo
                   { siPartial = siPartial liveInfo + w
-                  , siRemaining = suffixSums !! (k + 1)
+                  , siRemaining = suffArr A.! (k + 1)
                   , siLevel = k + 1
                   , siItemsUsed = siItemsUsed liveInfo + 1
                   , siItemsLeft = siItemsLeft liveInfo - 1
                   }
                 -- Branch OUT: exclude weight k
                 infoOut = liveInfo
-                  { siRemaining = suffixSums !! (k + 1)
+                  { siRemaining = suffArr A.! (k + 1)
                   , siLevel = k + 1
                   , siItemsLeft = siItemsLeft liveInfo - 1
                   }
@@ -340,7 +342,30 @@ main = do
       ++ padR 10 (show twoN)
       ++ padR 12 (showF 4 (fromIntegral nodes / fromIntegral twoN :: Double))
       ++ padR 12 (showF 1 (fromIntegral nodes / fromIntegral (n*n*n) :: Double))
-    ) [6, 8, 10, 12, 14, 16]
+    ) [6, 8, 10, 12, 14, 16, 18, 20]
+  putStrLn ""
+
+  -- ─────────────────────────────────────────────────────────────
+  -- Section 5: Extended scaling with more primes
+  -- ─────────────────────────────────────────────────────────────
+  putStrLn "=== 5. EXTENDED: more primes (16), larger n ==="
+  putStrLn ""
+  let bigPrimes = [3,5,7,11,13,17,19,23,29,31,37,41,43,47,53,59]
+  putStrLn $ padR 5 "n" ++ padR 12 "adt-nodes" ++ padR 10 "2^n"
+    ++ padR 12 "adt/2^n" ++ padR 10 "adt/n^3" ++ padR 10 "adt/n^4"
+  putStrLn (replicate 60 '-')
+  mapM_ (\n -> do
+    let (ws, t) = mkHash n
+        (_, stats) = algebraicSearch ws t bigPrimes
+        nodes = stNodes stats
+        twoN = (2::Int)^n
+    putStrLn $ padR 5 (show n)
+      ++ padR 12 (show nodes)
+      ++ padR 10 (show twoN)
+      ++ padR 12 (showF 4 (fromIntegral nodes / fromIntegral twoN :: Double))
+      ++ padR 10 (showF 2 (fromIntegral nodes / fromIntegral (n*n*n) :: Double))
+      ++ padR 10 (showF 3 (fromIntegral nodes / fromIntegral (n*n*n*n) :: Double))
+    ) [8, 10, 12, 14, 16, 18, 20]
   putStrLn ""
 
   putStrLn "═══════════════════════════════════════════════════════════════════"
