@@ -174,18 +174,20 @@ main = do
       ++ padR 10 (show sigs)
       ++ padR 10 (showF 3 (fromIntegral sigs / fromIntegral halfN :: Double))
       ++ padR 10 (showF 1 (fromIntegral halfN / fromIntegral (max 1 sigs) :: Double) ++ "x")
-    ) [8, 10, 12, 14, 16, 18, 20]
+    ) [8, 12, 16, 20, 24, 28]
   putStrLn ""
 
   -- ─────────────────────────────────────────────────────────────
   -- Section 2: Compatible pairs — the FILTERING power
   -- ─────────────────────────────────────────────────────────────
   putStrLn "=== 2. FILTERING: compatible pairs / all pairs ==="
+  putStrLn "   (8 primes product = 223,092,870 ≈ 2^27.7)"
+  putStrLn "   (filter should break when 2^{n/2} > 2^27.7, i.e., n > 55)"
   putStrLn ""
-  putStrLn $ padR 5 "n" ++ padR 10 "all-pair" ++ padR 10 "compat"
+  putStrLn $ padR 5 "n" ++ padR 12 "all-pair" ++ padR 10 "compat"
     ++ padR 10 "filter%" ++ padR 10 "lookups" ++ padR 10 "plain"
     ++ padR 10 "speedup"
-  putStrLn (replicate 66 '-')
+  putStrLn (replicate 68 '-')
   mapM_ (\n -> do
     let (ws, t) = mkHash n
         (found, lSig, rSig, compat, lookups, plain) = richCatalogMITM ws t 8 8
@@ -194,13 +196,13 @@ main = do
                     else (1 - fromIntegral compat / fromIntegral allPairs) * 100 :: Double
         speedup = fromIntegral plain / fromIntegral (max 1 lookups) :: Double
     putStrLn $ padR 5 (show n)
-      ++ padR 10 (show allPairs)
+      ++ padR 12 (show allPairs)
       ++ padR 10 (show compat)
       ++ padR 10 (showF 2 filterPct ++ "%")
       ++ padR 10 (show lookups)
       ++ padR 10 (show plain)
       ++ padR 10 (showF 1 speedup ++ "x")
-    ) [8, 10, 12, 14, 16, 18]
+    ) [8, 12, 16, 20, 24, 28]
   putStrLn ""
 
   -- ─────────────────────────────────────────────────────────────
@@ -250,17 +252,17 @@ main = do
       ++ padR 10 (show plainWN) ++ padR 10 (show catLN)
       ++ padR 10 (showF 1 spN ++ "x")
       ++ padR 8 (if catFN == plainFN then "OK" else "ERR")
-    ) [8, 10, 12, 14, 16]
+    ) [8, 12, 16, 20, 24, 28]
   putStrLn ""
 
   -- ─────────────────────────────────────────────────────────────
-  -- Section 5: THE KEY — lookups/2^{n/2} scaling
+  -- Section 5: THE KEY — lookups/2^{n/2} scaling to large n
   -- ─────────────────────────────────────────────────────────────
-  putStrLn "=== 5. SCALING: catalog lookups / 2^{n/2} ==="
-  putStrLn "   If ratio → 0: catalog beats MITM asymptotically!"
-  putStrLn "   If ratio → const: same complexity, better constant"
+  putStrLn "=== 5. SCALING: catalog lookups / 2^{n/2} (extended) ==="
+  putStrLn "   2^{n/2} crosses prime product (2^27.7) around n=55"
+  putStrLn "   If ratio stays 0: rich catalog is SUBLINEAR in MITM!"
   putStrLn ""
-  putStrLn $ padR 5 "n" ++ padR 12 "lookups" ++ padR 10 "2^(n/2)"
+  putStrLn $ padR 5 "n" ++ padR 10 "2^(n/2)" ++ padR 12 "lookups"
     ++ padR 10 "ratio" ++ padR 10 "look/n²"
   putStrLn (replicate 48 '-')
   mapM_ (\n -> do
@@ -268,11 +270,11 @@ main = do
         (_, _, _, _, lookups, _) = richCatalogMITM ws t 8 8
         halfN = (2::Int)^(n `div` 2)
     putStrLn $ padR 5 (show n)
-      ++ padR 12 (show lookups)
       ++ padR 10 (show halfN)
+      ++ padR 12 (show lookups)
       ++ padR 10 (showF 4 (fromIntegral lookups / fromIntegral halfN :: Double))
       ++ padR 10 (showF 2 (fromIntegral lookups / fromIntegral (n*n) :: Double))
-    ) [8, 10, 12, 14, 16, 18]
+    ) [8, 12, 16, 20, 24, 28]
   putStrLn ""
 
   putStrLn "═══════════════════════════════════════════════════════════════════"
