@@ -332,6 +332,16 @@ executable compression-gap
   default-language:  GHC2024
   ghc-options:       -O2
 
+executable algebraic-short-circuit
+  main-is:          AlgebraicShortCircuit.hs
+  build-depends:
+    base >= 4.21 && < 5,
+    containers >= 0.7,
+    p-eq-np
+  hs-source-dirs:   bench
+  default-language:  GHC2024
+  ghc-options:       -O2
+
 executable bit-level-dp
   main-is:          BitLevelDP.hs
   build-depends:
